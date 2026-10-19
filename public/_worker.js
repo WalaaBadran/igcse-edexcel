@@ -269,7 +269,7 @@ th{font-size:13px;color:var(--muted)}td.z{color:var(--muted)}small{color:var(--m
 <p id="me" style="color:var(--brand);font-weight:600"></p>
 <script>(function () { var own = false; try { own = localStorage.getItem('vown') === '1'; } catch (e) {}
   var me = document.getElementById('me'), go = ${JSON.stringify(meUrl)}, done = /[?&]done=1/.test(location.search);
-  if (own) me.textContent = '✓ Your own visits on this device are not counted.';
+  if (own) { me.textContent = '✓ Your own visits on this device are not counted. '; if (go) { var a = document.createElement('a'); a.href = go; a.textContent = 'Set up this device again (after a new site is added)'; me.appendChild(a); } }
   else if (go && !done) location.replace(go);
   else me.textContent = 'This device could not be set up, so your visits on it may still be counted.';
 })();</script>

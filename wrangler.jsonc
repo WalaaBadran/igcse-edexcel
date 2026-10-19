@@ -1,0 +1,9 @@
+// Cloudflare: IGCSE Edexcel Maths (shareable copy of Year 8 Maths), open to anyone with the link
+{
+  "name": "igcse-edexcel",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-10-01",
+  "keep_vars": true,
+  "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": true },
+  "d1_databases": [{ "binding": "DB", "database_name": "study-progress", "database_id": "bb79c067-05ae-4317-b9bf-0b3c6d52bdd8" }]
+}

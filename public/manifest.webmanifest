@@ -1,0 +1,21 @@
+{
+ "name": "IGCSE Edexcel Maths",
+ "short_name": "Maths",
+ "start_url": "./",
+ "scope": "./",
+ "display": "standalone",
+ "background_color": "#F6F7FB",
+ "theme_color": "#4338CA",
+ "icons": [
+  {
+   "src": "icon-192.png",
+   "sizes": "192x192",
+   "type": "image/png"
+  },
+  {
+   "src": "icon-512.png",
+   "sizes": "512x512",
+   "type": "image/png"
+  }
+ ]
+}

@@ -169,7 +169,7 @@ async function flagApi(request, env, url) {
 const VISITS_HASH = 'a3c878a98dd187788a3e71c30df3c20b4bf227e80e6a39854b1aa84334970441';
 const VSITES = { 'year9-english': 'Y9 English', 'year8-english': 'Y8 English', 'year9-science': 'Y9 Science', 'year8-science': 'Y8 Science',
   'year9-geography': 'Y9 Geography', 'year8-geography': 'Y8 Geography', 'year9-history': 'Y9 History', 'year8-history': 'Y8 History',
-  'year9-math': 'Y9 Maths', 'year8-math': 'Y8 Maths', 'igcse-edexcel': 'IGCSE Maths (shared)' };
+  'year9-math': 'Y9 Maths', 'year8-math': 'Y8 Maths', 'igcse-edexcel-maths': 'IGCSE Maths (shared)' };
 let visitsReady = false;
 async function visitsTable(db) {
   if (visitsReady) return;
@@ -181,7 +181,7 @@ async function visitsTable(db) {
 }
 // where each site lives: all on deirarevise.workers.dev, except IGCSE Edexcel Maths on its own pages.dev link (user 2026-10-19:
 // "for this site can we change deira revise")
-const VHOST = { 'igcse-edexcel': 'igcse-edexcel.pages.dev' };
+const VHOST = { 'igcse-edexcel-maths': 'igcse-edexcel-maths.pages.dev' };
 const vHost = s => VHOST[s] || `${s}.deirarevise.workers.dev`;
 const vsha = async t => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t)))].map(b => b.toString(16).padStart(2, '0')).join('');
 const vOwner = async k => (await vsha('deirarevise-visits:' + k)) === VISITS_HASH;

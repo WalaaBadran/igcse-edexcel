@@ -265,7 +265,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,sans
 .wrap{overflow-x:auto;background:var(--card);border-radius:12px;box-shadow:0 2px 12px #0001}table{border-collapse:collapse;width:100%;min-width:640px}
 th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:center;white-space:nowrap}th:first-child,td:first-child{text-align:left;position:sticky;left:0;background:var(--card)}
 th{font-size:13px;color:var(--muted)}td.z{color:var(--muted)}small{color:var(--muted)}tr.t td{border-top:2px solid var(--brand)}</style></head><body>
-<h1>📈 Visits</h1><p>Each box: how many <b>devices</b> opened that site that day (UAE time). A device counts once a day per site, however many times it opens it. <small>"· 3 used"</small> = how many of them really used it (2 minutes or more of tapping, typing, scrolling, watching a video or listening). Each site is counted on its own (user 2026-10-20: "don't count all sites, just subsites"). Counting started on 19 Oct 2026. Only you have this link: please keep it private.</p>
+<h1>📈 Visits</h1><p>Each box: how many <b>devices</b> opened that site that day (UAE time). A device counts once a day per site, however many times it opens it. <small>"· 3 used"</small> = how many of them really used it (2 minutes or more of tapping, typing, scrolling, watching a video or listening). Each site and each day is counted on its own, with no totals (user 2026-10-20: "don't count all sites, just subsites"; "total number removed"). Counting started on 19 Oct 2026. Only you have this link: please keep it private.</p>
 <p id="me" style="color:var(--brand);font-weight:600"></p>
 <script>(function () { var own = false; try { own = localStorage.getItem('vown') === '1'; } catch (e) {}
   var me = document.getElementById('me'), go = ${JSON.stringify(meUrl)}, done = /[?&]done=1/.test(location.search);
@@ -274,8 +274,7 @@ th{font-size:13px;color:var(--muted)}td.z{color:var(--muted)}small{color:var(--m
   else me.textContent = 'This device could not be set up, so your visits on it may still be counted.';
 })();</script>
 <div class="wrap"><table><tr><th>Day</th>${sites.map(s => `<th>${VSITES[s]}</th>`).join('')}</tr>
-${days.length ? days.map(d => `<tr><td>${nice(d)}</td>${sites.map(s => cell(d, s)).join('')}</tr>`).join('') : `<tr><td colspan="${sites.length + 1}">No visits counted yet. Open any site, then refresh this page.</td></tr>`}
-<tr class="t"><td><b>Total</b></td>${sites.map(s => `<td>${pair(sum(rows.filter(r => r.site === s)))}</td>`).join('')}</tr></table></div>
+${days.length ? days.map(d => `<tr><td>${nice(d)}</td>${sites.map(s => cell(d, s)).join('')}</tr>`).join('') : `<tr><td colspan="${sites.length + 1}">No visits counted yet. Open any site, then refresh this page.</td></tr>`}</table></div>
 <h2 style="margin:20px 0 4px">🆕 Which devices (last 3 days)</h2><p>Each new device, with the time it first opened that site (UAE) and its type. Use it to tell your own devices from anyone else's. Times were saved from 19 Oct evening.</p>
 <div class="wrap"><table style="min-width:0"><tr><th>Day</th><th>Site</th><th>First opened</th><th>Device</th><th>Time used</th><th>Pages</th></tr>
 ${devs.length ? devs.map(r => `<tr><td>${nice(r.day)}</td><td>${VSITES[r.site] || r.site}</td><td>${r.at || '<small>before times were saved</small>'}</td><td>${r.kind || '<small>not saved</small>'}</td><td>${mins(r)}</td><td>${r.pages || '–'}</td></tr>`).join('') : '<tr><td colspan="6">No devices yet.</td></tr>'}</table></div>

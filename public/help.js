@@ -238,13 +238,16 @@ ${fixesHTML()}
       } catch (e) {}
       if (!own) {
         navigator.sendBeacon('/__visit?d=' + encodeURIComponent(id));
-        // ⏱ real use or a quick look? (user 2026-10-19): count seconds only while the page is on screen AND the student
-        // tapped, typed or scrolled in the last 2 minutes, plus pages opened; sent when the page is hidden or closed.
+        // ⏱ real use or a quick look? (user 2026-10-19). Seconds count while the page is on screen AND the student is doing
+        // something: tapped, typed or scrolled in the last 2 minutes, OR a video / Read aloud is playing (user 2026-10-20: "even
+        // staying and using it, it gives – and very few usings"). Sent every minute while open, and when the page is left.
         let act = 0, pages = 1, first = true, lastIn = Date.now();
-        ['pointerdown', 'keydown', 'scroll', 'touchstart'].forEach(ev => addEventListener(ev, () => { lastIn = Date.now(); }, { passive: true, capture: true }));
+        ['pointerdown', 'keydown', 'input', 'scroll', 'touchstart', 'wheel'].forEach(ev => addEventListener(ev, () => { lastIn = Date.now(); }, { passive: true, capture: true }));
         addEventListener('hashchange', () => { pages++; lastIn = Date.now(); });
-        setInterval(() => { if (document.visibilityState === 'visible' && Date.now() - lastIn < 120000) act += 15; }, 15000);
+        const playing = () => { try { return [...document.querySelectorAll('video, audio')].some(m => !m.paused && !m.ended) || !!(window.speechSynthesis && speechSynthesis.speaking); } catch (e) { return false; } };
+        setInterval(() => { if (document.visibilityState === 'visible' && (Date.now() - lastIn < 120000 || playing())) act += 15; }, 15000);
         const send = () => { if (act || pages > (first ? 1 : 0)) { navigator.sendBeacon('/__visit?u=1&d=' + encodeURIComponent(id) + '&t=' + act + '&p=' + pages); act = 0; pages = 0; first = false; } };
+        setInterval(() => { if (act >= 60) send(); }, 60000);   // every minute while studying, so nothing is lost if the browser is closed suddenly
         document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') send(); });
         addEventListener('pagehide', send);
       }

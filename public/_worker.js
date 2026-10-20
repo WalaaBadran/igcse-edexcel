@@ -251,6 +251,7 @@ async function visitsHook(request, env, ctx) {
     }
     if (env.DB) { await visitsTable(env.DB); rows = (await env.DB.prepare('SELECT day, site, opens, devices FROM visits ORDER BY day DESC').all()).results || [];
       devs = (await env.DB.prepare('SELECT day, site, at, kind, secs, pages FROM vdev ORDER BY day DESC, at DESC').all()).results || []; }
+    const used2 = d => devs.filter(x => x.day === d && (x.secs || 0) >= 120).length;
     const used = (d, s) => devs.filter(x => x.day === d && x.site === s && (x.secs || 0) >= 120).length;
     const mins = x => x.secs ? (x.secs < 60 ? 'under 1 min' : Math.floor(x.secs / 60) + ' min') : '–';
     const days = [...new Set(rows.map(r => r.day))].slice(0, 30), sites = Object.keys(VSITES);
@@ -265,7 +266,7 @@ body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,sans
 .wrap{overflow-x:auto;background:var(--card);border-radius:12px;box-shadow:0 2px 12px #0001}table{border-collapse:collapse;width:100%;min-width:640px}
 th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:center;white-space:nowrap}th:first-child,td:first-child{text-align:left;position:sticky;left:0;background:var(--card)}
 th{font-size:13px;color:var(--muted)}td.z{color:var(--muted)}small{color:var(--muted)}tr.t td{border-top:2px solid var(--brand)}</style></head><body>
-<h1>📈 Visits</h1><p>Each box: how many <b>devices</b> opened that site that day (UAE time). A device counts once a day per site, however many times it opens it. <small>"· 3 used"</small> = how many of them really used it (2 minutes or more of tapping, typing, scrolling, watching a video or listening). Each site is counted on its own (user 2026-10-20: "don't count all sites, just subsites"). Total = that site's days added up. Counting started on 19 Oct 2026. Only you have this link: please keep it private.</p>
+<h1>📈 Visits</h1><p>Each box: how many <b>devices</b> opened that site that day (UAE time). A device counts once a day per site, however many times it opens it. <small>"· 3 used"</small> = how many of them really used it (2 minutes or more of tapping, typing, scrolling, watching a video or listening). Day total = all the sites' boxes for that day added up (user 2026-10-20: "total views for each day"); a student who used 3 sites counts 3 there. Total row = each site's days added up. Counting started on 19 Oct 2026. Only you have this link: please keep it private.</p>
 <p id="me" style="color:var(--brand);font-weight:600"></p>
 <script>(function () { var own = false; try { own = localStorage.getItem('vown') === '1'; } catch (e) {}
   var me = document.getElementById('me'), go = ${JSON.stringify(meUrl)}, done = /[?&]done=1/.test(location.search);
@@ -273,9 +274,9 @@ th{font-size:13px;color:var(--muted)}td.z{color:var(--muted)}small{color:var(--m
   else if (go && !done) location.replace(go);
   else me.textContent = 'This device could not be set up, so your visits on it may still be counted.';
 })();</script>
-<div class="wrap"><table><tr><th>Day</th>${sites.map(s => `<th>${VSITES[s]}</th>`).join('')}</tr>
-${days.length ? days.map(d => `<tr><td>${nice(d)}</td>${sites.map(s => cell(d, s)).join('')}</tr>`).join('') : `<tr><td colspan="${sites.length + 1}">No visits counted yet. Open any site, then refresh this page.</td></tr>`}
-<tr class="t"><td><b>Total</b></td>${sites.map(s => `<td>${pair(sum(rows.filter(r => r.site === s)))}</td>`).join('')}</tr></table></div>
+<div class="wrap"><table><tr><th>Day</th>${sites.map(s => `<th>${VSITES[s]}</th>`).join('')}<th>Day total</th></tr>
+${days.length ? days.map(d => `<tr><td>${nice(d)}</td>${sites.map(s => cell(d, s)).join('')}<td><b>${sum(rows.filter(r => r.day === d))[0]}</b>${used2(d) ? `<small> · ${used2(d)} used</small>` : ''}</td></tr>`).join('') : `<tr><td colspan="${sites.length + 2}">No visits counted yet. Open any site, then refresh this page.</td></tr>`}
+<tr class="t"><td><b>Total</b></td>${sites.map(s => `<td>${pair(sum(rows.filter(r => r.site === s)))}</td>`).join('')}<td>${pair(sum(rows))}</td></tr></table></div>
 <h2 style="margin:20px 0 4px">🆕 Which devices (last 3 days)</h2><p>Each new device, with the time it first opened that site (UAE) and its type. Use it to tell your own devices from anyone else's. Times were saved from 19 Oct evening.</p>
 <div class="wrap"><table style="min-width:0"><tr><th>Day</th><th>Site</th><th>First opened</th><th>Device</th><th>Time used</th><th>Pages</th></tr>
 ${devs.length ? devs.map(r => `<tr><td>${nice(r.day)}</td><td>${VSITES[r.site] || r.site}</td><td>${r.at || '<small>before times were saved</small>'}</td><td>${r.kind || '<small>not saved</small>'}</td><td>${mins(r)}</td><td>${r.pages || '–'}</td></tr>`).join('') : '<tr><td colspan="6">No devices yet.</td></tr>'}</table></div>

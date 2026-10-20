@@ -253,13 +253,15 @@ async function visitsHook(request, env, ctx) {
       devs = (await env.DB.prepare('SELECT day, site, at, kind, secs, pages FROM vdev ORDER BY day DESC, at DESC').all()).results || []; }
     const used2 = d => devs.filter(x => x.day === d && (x.secs || 0) >= 120).length;
     const used = (d, s) => devs.filter(x => x.day === d && x.site === s && (x.secs || 0) >= 120).length;
-    const mins = x => x.secs ? (x.secs < 60 ? 'under 1 min' : Math.floor(x.secs / 60) + ' min') : '–';
+    // no time yet: still in its first seconds (opened in the last 3 minutes), or opened and left at once (user 2026-10-20: the "–" looked like a fault)
+    const nowMin = (([h, m]) => +h * 60 + +m)(vTime().split(':')), fresh = x => x.day === vDay() && x.at && nowMin - (([h, m]) => +h * 60 + +m)(x.at.split(':')) <= 3;
+    const mins = x => x.secs ? (x.secs < 60 ? 'under 1 min' : Math.floor(x.secs / 60) + ' min') : `<small>${fresh(x) ? 'starting…' : 'quick look'}</small>`;
     const days = [...new Set(rows.map(r => r.day))].slice(0, 30), sites = Object.keys(VSITES);
     const cell = (d, s) => { const r = rows.find(x => x.day === d && x.site === s); return r ? `<td><b>${r.devices}</b>${used(d, s) ? `<small> · ${used(d, s)} used</small>` : ''}</td>` : '<td class="z">0</td>'; };   // 0, not "–" (user 2026-10-19)
     const sum = list => list.reduce((a, r) => [a[0] + r.devices, a[1] + r.opens], [0, 0]);
     const nice = d => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
     const pair = ([a]) => `<b>${a}</b>`;
-    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Visits</title>
+    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta http-equiv="refresh" content="60"><title>Visits</title>
 <style>:root{--bg:#f4f6fb;--card:#fff;--ink:#1d2433;--muted:#5b6475;--line:#e4e7ec;--brand:#0E8F6E}
 @media (prefers-color-scheme:dark){:root{--bg:#12151c;--card:#1c212b;--ink:#e8ecf3;--muted:#9aa3b2;--line:#2c3340;--brand:#34D3A3}}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,sans-serif;padding:16px}h1{margin:0 0 4px}p{color:var(--muted);margin:0 0 12px}
@@ -277,9 +279,9 @@ th{font-size:13px;color:var(--muted)}td.z{color:var(--muted)}small{color:var(--m
 <div class="wrap"><table><tr><th>Day</th>${sites.map(s => `<th>${VSITES[s]}</th>`).join('')}<th>Day total</th></tr>
 ${days.length ? days.map(d => `<tr><td>${nice(d)}</td>${sites.map(s => cell(d, s)).join('')}<td><b>${sum(rows.filter(r => r.day === d))[0]}</b>${used2(d) ? `<small> · ${used2(d)} used</small>` : ''}</td></tr>`).join('') : `<tr><td colspan="${sites.length + 2}">No visits counted yet. Open any site, then refresh this page.</td></tr>`}
 <tr class="t"><td><b>Total</b></td>${sites.map(s => `<td>${pair(sum(rows.filter(r => r.site === s)))}</td>`).join('')}<td>${pair(sum(rows))}</td></tr></table></div>
-<h2 style="margin:20px 0 4px">🆕 Which devices (last 3 days)</h2><p>Each new device, with the time it first opened that site (UAE) and its type. Use it to tell your own devices from anyone else's. Times were saved from 19 Oct evening.</p>
+<h2 style="margin:20px 0 4px">🆕 Which devices (last 3 days)</h2><p>Each new device, with the time it first opened that site (UAE) and its type. Use it to tell your own devices from anyone else's. <b>Time used</b> counts only while the student is tapping, typing, scrolling, watching a video or listening; it arrives after 15 seconds of use and then every minute. <small>starting…</small> = opened in the last few minutes, no time sent yet. <small>quick look</small> = opened and left within seconds. This page updates itself every minute.</p>
 <div class="wrap"><table style="min-width:0"><tr><th>Day</th><th>Site</th><th>First opened</th><th>Device</th><th>Time used</th><th>Pages</th></tr>
-${devs.length ? devs.map(r => `<tr><td>${nice(r.day)}</td><td>${VSITES[r.site] || r.site}</td><td>${r.at || '<small>before times were saved</small>'}</td><td>${r.kind || '<small>not saved</small>'}</td><td>${mins(r)}</td><td>${r.pages || '–'}</td></tr>`).join('') : '<tr><td colspan="6">No devices yet.</td></tr>'}</table></div>
+${devs.length ? devs.map(r => `<tr><td>${nice(r.day)}</td><td>${VSITES[r.site] || r.site}</td><td>${r.at || '<small>before times were saved</small>'}</td><td>${r.kind || '<small>not saved</small>'}</td><td>${mins(r)}</td><td>${r.pages || 1}</td></tr>`).join('') : '<tr><td colspan="6">No devices yet.</td></tr>'}</table></div>
 <p style="margin-top:12px">Open this page once on each phone or laptop you use, and your visits on it stop being counted (numbers up to 19 Oct may include yours). A phone in private mode, or the same phone in a different browser, counts as another device. Cloudflare Web Analytics (dash.cloudflare.com) also has visit numbers; it counts everyone, you too.</p></body></html>`;
     return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-robots-tag': 'noindex, nofollow', 'referrer-policy': 'no-referrer' } });
   }

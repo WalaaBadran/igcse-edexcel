@@ -254,7 +254,9 @@ ${fixesHTML()}
         const playing = () => { try { return [...document.querySelectorAll('video, audio')].some(m => !m.paused && !m.ended) || !!(window.speechSynthesis && speechSynthesis.speaking); } catch (e) { return false; } };
         setInterval(() => { if (document.visibilityState === 'visible' && (Date.now() - lastIn < 120000 || playing())) act += 15; }, 15000);
         const send = () => { if (act || pages > (first ? 1 : 0)) { navigator.sendBeacon('/__visit?u=1&d=' + encodeURIComponent(id) + '&t=' + act + '&p=' + pages); act = 0; pages = 0; first = false; } };
-        setInterval(() => { if (act >= 60) send(); }, 60000);   // every minute while studying, so nothing is lost if the browser is closed suddenly
+        // the first 15 seconds of use are sent at once, so the owner's page soon shows the device is being used (user 2026-10-20: "although
+        // he is still using it it gives –"); then every minute while studying, so nothing is lost if the browser is closed suddenly
+        setInterval(() => { if (act >= 60 || (first && act >= 15)) send(); }, 15000);
         document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') send(); });
         addEventListener('pagehide', send);
       }

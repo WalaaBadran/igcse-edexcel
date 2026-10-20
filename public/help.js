@@ -189,6 +189,7 @@ ${fixesHTML()}
   /* 🆕 What's new: shown on the Home page for 2 weeks after each change, newest first; only the 2 newest are open, the rest
      fold under "More" so the box stays short on phones (2026-10-19). [date, text, only on sites whose title starts with this] */
   const NEWS = [
+    ['2026-10-20', '🌸 NEW in 🎯 Practise: PETAL step by step. Practise each part of PETAL on its own with marking, including 🔗 L+: linking to Orwell’s intentions and the context.', 'Year 9 English'],
     ['2026-10-20', '🤖 NEW: an AI helper. Stuck on something? Tap 🤖 Ask AI at the top of the screen and ask about the page you are on.', 'Year '],
     ['2026-10-19', '🎟 NEW: Golden Ticket tasks. The school’s extra challenge tasks: print or do them, then hand them in to your teacher (in the menu).'],
     ['2026-10-12', '🔥 NEW in ⚡ Revise: Challenge mode. No options: type the answer from memory, then check. Harder, and better for remembering.'],

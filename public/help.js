@@ -90,6 +90,9 @@ ${o.video === false ? '' : `<div class="card" style="margin-top:12px"><h3>🎬 W
 <div class="card" style="margin-top:12px"><h3>🔊 Reading help</h3>
   <p style="margin:0">At the bottom of every page: <b>🔊 Read aloud</b> reads the page to you, and <b>A+ Bigger text</b> makes the words bigger.</p>
   <p style="margin:8px 0 0"><b>📌 Sticky note</b> sticks your own note on the page you are on, and <b>📝 My notes</b> keeps a notebook of everything you wrote, ready to print or share.</p></div>
+${window.ASK_AI ? `<div class="card" style="margin-top:12px"><h3>🤖 Stuck? Ask the AI helper</h3>
+  <p style="margin:0">Tap <b>🤖 Ask AI</b> at the top of the screen and type what you don't understand. It looks at the page you are on and explains it in a simpler way, in English or Arabic. Tip: select some words on the page first, then tap 🤖 Ask AI to have just those words explained.</p>
+  <p class="small muted" style="margin:8px 0 0">The AI can make mistakes: check with your notes or your teacher. For homework it gives hints, not answers to copy. Don't type your name or personal details.</p></div>` : ''}
 <div class="card" style="margin-top:12px"><h3>💾 Your progress</h3>
   <p style="margin:0">Your answers and scores are saved on this phone or computer. Nobody else can see them.</p>
   <p style="margin:8px 0 0;padding:10px 12px;border-radius:10px;background:#FEF3C7;color:#78350F;border:2px solid #F59E0B"><b>⚠️ Without a save code, progress is saved only on this device.</b> If you clear your browser or change device, it is lost unless you move it yourself with <b>Backup</b> on ${WHERE[o.backup] || WHERE.progress}.</p>
@@ -98,6 +101,7 @@ ${o.video === false ? '' : `<div class="card" style="margin-top:12px"><h3>🎬 W
   <ul style="margin:6px 0 0;padding-left:20px;line-height:1.6">
     <li>This site was made by a parent to help the class revise. It follows the school's study lists, but it is <b>not an official school website</b> and the teachers are not involved. If something here doesn't match your school notes, please flag it (see below).</li>
     <li>No sign-up, no names, no ads.<span class="needsync"> Online saving is optional: a parent turns it on, only study progress is stored under a random code (no names, emails or phone numbers), and it can be deleted at any time.</span></li>
+    ${window.ASK_AI ? '<li>The <b>🤖 Ask AI</b> helper uses a free AI model (Google’s open Gemma model, run by Cloudflare). Each question is checked for safety first, it only helps with school work, and this site does <b>not save</b> questions or answers. A daily limit keeps it free.</li>' : ''}
     ${o.claude ? '<li>Some writing tasks have an optional button that copies the answer so it can be pasted into Claude (claude.ai) for feedback. Nothing is sent unless someone chooses to do this. Claude accounts are for adults (18+), so a parent should do this step.</li>' : ''}
   </ul></div>
 <div class="card" style="margin-top:12px"><h3>🐞 Found a mistake?</h3>
@@ -112,6 +116,7 @@ ${fixesHTML()}
     <li><b>If you own any material on this site and would like it changed or removed</b>, please tell the parent who shared the link, and it will be taken down promptly.</li>
     <li>Progress is saved on your device.<span class="needsync"> <b>Online saving is optional</b> and is turned on by a parent or guardian, who can delete it at any time. Online progress that isn't used for a year is deleted automatically.</span></li>
     <li>The number of visits is counted (by the site itself and with <b>Cloudflare Web Analytics</b>), with <b>no cookies</b> and nothing that identifies you (no names, no exact location).</li>
+    ${window.ASK_AI ? '<li>Answers from the <b>🤖 AI helper</b> are written by a computer and <b>can be wrong</b>. Questions and answers are not saved by this site.</li>' : ''}
     <li>Links to other websites are for help only. Those sites have their own rules.</li>
     <li>By using this site, students and parents accept these points.</li>
   </ul></div>`);
@@ -184,6 +189,7 @@ ${fixesHTML()}
   /* 🆕 What's new: shown on the Home page for 2 weeks after each change, newest first; only the 2 newest are open, the rest
      fold under "More" so the box stays short on phones (2026-10-19). [date, text, only on sites whose title starts with this] */
   const NEWS = [
+    ['2026-10-20', '🤖 NEW: an AI helper. Stuck on something? Tap 🤖 Ask AI at the top of the screen and ask about the page you are on.', 'Year '],
     ['2026-10-19', '🎟 NEW: Golden Ticket tasks. The school’s extra challenge tasks: print or do them, then hand them in to your teacher (in the menu).'],
     ['2026-10-12', '🔥 NEW in ⚡ Revise: Challenge mode. No options: type the answer from memory, then check. Harder, and better for remembering.'],
     ['2026-10-12', '📌 NEW: Sticky notes and 📝 My notes. Write your own notes on any page, then print or share them (buttons at the bottom of every page).'],

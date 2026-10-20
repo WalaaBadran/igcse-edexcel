@@ -334,34 +334,59 @@ html:not(.sync-on) .needsync { display: none !important; }`;
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watch); else watch();
   window.HELP = { view };
 })();
-// 🔄 New-version check (user 2026-10-19: "sometimes even with refresh the updates not applied until i close and open").
-// Every few minutes and whenever the tab comes back, fetch this page fresh; if it loads any script version (?v=) that this
-// open page does not have, the site was updated: show a small bar to load the new version.
+// 🔄 Automatic updates (user 2026-10-19: "sometimes even with refresh the updates not applied until i close and open";
+// 2026-10-20: "i want the updates to refresh automatically like any live website").
+// Every minute, and whenever the student comes back to the tab, fetch this page fresh: if it loads any script version (?v=)
+// that this open page does not have, the site was updated. The new version then loads BY ITSELF at a safe moment:
+//  • the student opens another page of the site (they land on that page, already updated),
+//  • the student comes back to the site from another app or tab,
+//  • the Home page has had no typing or tapping for 20 seconds.
+// Never while an answer box is in use. "✨ Site updated" shows for a few seconds afterwards. If no safe moment comes within
+// 5 minutes (e.g. a long timed paper), the old tap-to-update bar appears instead, so nothing is lost mid-answer.
 (function () {
   const mine = () => new Set([...document.scripts].map(s => s.getAttribute('src') || '').filter(s => s.includes('?v=')));   // read at check time: the whole page has loaded by then
-  let shown = false, last = 0;
+  let ready = 0, last = 0, lastIn = Date.now(), barShown = false;
+  const typing = () => { const a = document.activeElement; return !!a && a.matches('input, textarea, select, [contenteditable=""], [contenteditable="true"]'); };
+  const atHome = () => /^#?\/?$/.test(location.hash);
+  const go = () => { try { sessionStorage.setItem('site-updated', '1'); } catch (e) {} location.reload(); };
   async function check() {
-    if (shown || Date.now() - last < 60000) return; last = Date.now();
+    if (ready || Date.now() - last < 50000) return; last = Date.now();
     try {
       const r = await fetch(location.pathname + '?u=' + Date.now(), { cache: 'no-store', credentials: 'same-origin' });
       if (!r.ok) return;
       const t = await r.text();
       const fresh = [...t.matchAll(/<script[^>]*\ssrc="([^"]*\?v=[^"]*)"/g)].map(m => m[1].replace(/&amp;/g, '&'));
-      const have = mine(); if (fresh.length && fresh.some(s => !have.has(s))) bar();
+      const have = mine(); if (fresh.length && fresh.some(s => !have.has(s))) { ready = Date.now(); safe(); }
     } catch (e) {}
   }
+  function safe() {   // update now if this is a safe moment; after 5 minutes without one, offer the bar
+    if (!ready || document.visibilityState !== 'visible' || typing()) return;
+    if (atHome() && Date.now() - lastIn > 20000) return go();
+    if (Date.now() - ready > 5 * 60000) bar();
+  }
   function bar() {
-    shown = true;
+    if (barShown || !document.body) return; barShown = true;
     const b = document.createElement('button'); b.type = 'button';
     b.textContent = '🔄 This site has been updated. Tap to load the new version.';
     b.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:84px;z-index:2000;max-width:calc(100% - 32px);padding:12px 18px;border:0;border-radius:999px;background:#1D4ED8;color:#fff;font:600 15px/1.3 system-ui,sans-serif;box-shadow:0 6px 24px #0004;cursor:pointer';
-    b.onclick = () => location.reload();
+    b.onclick = go;
     document.body.appendChild(b);
   }
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
+  ['pointerdown', 'keydown', 'input', 'scroll', 'touchstart'].forEach(ev => addEventListener(ev, () => { lastIn = Date.now(); }, { passive: true, capture: true }));
+  addEventListener('hashchange', () => { if (ready && !typing()) go(); });   // opening another page: it loads already updated
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { if (ready && !typing()) go(); else check(); } });
   window.addEventListener('focus', check);
-  setInterval(check, 3 * 60000);
-  setTimeout(check, 20000);
+  setInterval(check, 60000);
+  setInterval(safe, 10000);
+  setTimeout(check, 15000);
+  // after an automatic update: a small note for a few seconds
+  const note = () => {
+    try { if (!sessionStorage.getItem('site-updated')) return; sessionStorage.removeItem('site-updated'); } catch (e) { return; }
+    const n = document.createElement('div'); n.setAttribute('role', 'status'); n.textContent = '✨ Site updated';
+    n.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:84px;z-index:2000;padding:10px 18px;border-radius:999px;background:#15803D;color:#fff;font:600 15px/1.3 system-ui,sans-serif;box-shadow:0 6px 24px #0004';
+    document.body.appendChild(n); setTimeout(() => n.remove(), 3500);
+  };
+  if (document.body) note(); else document.addEventListener('DOMContentLoaded', note);
 })();
 // ⚪ Nothing looks selected until the student taps it (user 2026-10-19: "there should be no tab coloured as selected until
 // students tap it"). A button the site pressed by default (aria-pressed="true") looks plain until the student has tapped a

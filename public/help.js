@@ -355,9 +355,14 @@ html:not(.sync-on) .needsync { display: none !important; }`;
 //  • the Home page has had no typing or tapping for 20 seconds.
 // Never while an answer box is in use. "✨ Site updated" shows for a few seconds afterwards. If no safe moment comes within
 // 5 minutes (e.g. a long timed paper), the old tap-to-update bar appears instead, so nothing is lost mid-answer.
+// 2026-10-20 (user: "can pages auto refresh every minute but with saving the job if refresh in the middle of writing something
+// to solving or doing anything"): on the subject sites (they save quizzes and papers in progress: keepSession) the update now
+// loads within about a minute ANYWHERE, at the first pause of 4 seconds in typing, and not while a video, Read aloud or the AI
+// chat is on. Just before, everything typed on the page, the cursor and the scroll position are saved; after the reload they
+// are put back and the quiz or paper carries on where it was. Maths keeps the safe moments above.
 (function () {
   const mine = () => new Set([...document.scripts].map(s => s.getAttribute('src') || '').filter(s => s.includes('?v=')));   // read at check time: the whole page has loaded by then
-  let ready = 0, last = 0, lastIn = Date.now(), barShown = false;
+  let ready = 0, last = 0, lastIn = Date.now(), lastKey = 0, barShown = false;
   const typing = () => { const a = document.activeElement; return !!a && a.matches('input, textarea, select, [contenteditable=""], [contenteditable="true"]'); };
   const atHome = () => /^#?\/?$/.test(location.hash);
   const go = () => { try { sessionStorage.setItem('site-updated', '1'); } catch (e) {} location.reload(); };
@@ -371,8 +376,45 @@ html:not(.sync-on) .needsync { display: none !important; }`;
       const have = mine(); if (fresh.length && fresh.some(s => !have.has(s))) { ready = Date.now(); safe(); }
     } catch (e) {}
   }
+  const canKeep = () => { try { return typeof keepSession === 'function'; } catch (e) { return false; } };
+  const busyNow = () => {   // not now: typing this second, a video or Read aloud playing, the AI chat open
+    if (Date.now() - lastKey < 4000 || document.documentElement.classList.contains('ask-open')) return true;
+    try { return [...document.querySelectorAll('video, audio')].some(m => !m.paused && !m.ended) || !!(window.speechSynthesis && speechSynthesis.speaking); } catch (e) { return false; }
+  };
+  const fields = () => [...new Set(document.querySelectorAll('#app input, #app textarea, #app select, main input, main textarea, main select'))]
+    .filter(el => !/^(password|file|hidden|submit|button|image|reset)$/.test(el.type) && !el.closest('.ask-back'));
+  const fkey = (el, i) => el.dataset.ans != null ? 'a:' + el.dataset.ans : el.hasAttribute('data-qin') ? 'q:' : el.id ? '#' + el.id : el.name ? 'n:' + el.name : 'i:' + i;
+  function goKeep() {   // save the work on the page, then load the new version
+    try {
+      if (canKeep()) keepSession();
+      const els = fields(), a = document.activeElement, fi = els.indexOf(a);
+      sessionStorage.setItem('upd-snap', JSON.stringify({ t: Date.now(), hash: location.hash, y: scrollY,
+        f: els.map((el, i) => [fkey(el, i), el.type === 'checkbox' || el.type === 'radio' ? (el.checked ? '1' : '0') : el.value]).filter(x => x[1] !== ''),
+        focus: fi >= 0 ? [fkey(a, fi), a.selectionStart, a.selectionEnd] : null }));
+      sessionStorage.setItem('site-updated', 'kept');
+    } catch (e) {}
+    location.reload();
+  }
+  function restore() {   // after an update: put the saved work back
+    let z = null; try { z = JSON.parse(sessionStorage.getItem('upd-snap') || 'null'); sessionStorage.removeItem('upd-snap'); } catch (e) {}
+    if (!z || Date.now() - z.t > 120000 || z.hash !== location.hash) return;
+    const map = new Map(z.f);
+    const put = first => {
+      const els = fields();
+      els.forEach((el, i) => {
+        const k = fkey(el, i); if (!map.has(k) || el.disabled) return; const v = map.get(k);
+        if (el.type === 'checkbox' || el.type === 'radio') { if (first && el.checked !== (v === '1')) { el.checked = v === '1'; el.dispatchEvent(new Event('change', { bubbles: true })); } return; }
+        if (el.value !== v && (first || el.value === '')) { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); }
+      });
+      if (first && z.focus) { const el = els.find((e, i) => fkey(e, i) === z.focus[0]); if (el) { try { el.focus({ preventScroll: true }); el.setSelectionRange(z.focus[1], z.focus[2]); } catch (e) {} } }
+      scrollTo(0, z.y);
+    };
+    setTimeout(() => put(true), 350); setTimeout(() => put(false), 1300);
+  }
   function safe() {   // update now if this is a safe moment; after 5 minutes without one, offer the bar
-    if (!ready || document.visibilityState !== 'visible' || typing()) return;
+    if (!ready || document.visibilityState !== 'visible') return;
+    if (canKeep()) { if (!busyNow()) return goKeep(); if (Date.now() - ready > 5 * 60000) bar(); return; }
+    if (typing()) return;
     if (atHome() && Date.now() - lastIn > 20000) return go();
     if (Date.now() - ready > 5 * 60000) bar();
   }
@@ -385,16 +427,18 @@ html:not(.sync-on) .needsync { display: none !important; }`;
     document.body.appendChild(b);
   }
   ['pointerdown', 'keydown', 'input', 'scroll', 'touchstart'].forEach(ev => addEventListener(ev, () => { lastIn = Date.now(); }, { passive: true, capture: true }));
-  addEventListener('hashchange', () => { if (ready && !typing()) go(); });   // opening another page: it loads already updated
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { if (ready && !typing()) go(); else check(); } });
+  ['keydown', 'input'].forEach(ev => addEventListener(ev, () => { lastKey = Date.now(); }, { passive: true, capture: true }));
+  addEventListener('hashchange', () => { if (ready && !typing()) (canKeep() ? goKeep : go)(); });   // opening another page: it loads already updated
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { if (ready && !typing()) (canKeep() ? goKeep : go)(); else check(); } });
   window.addEventListener('focus', check);
   setInterval(check, 60000);
-  setInterval(safe, 10000);
+  setInterval(safe, 5000);
   setTimeout(check, 15000);
   // after an automatic update: a small note for a few seconds
   const note = () => {
-    try { if (!sessionStorage.getItem('site-updated')) return; sessionStorage.removeItem('site-updated'); } catch (e) { return; }
-    const n = document.createElement('div'); n.setAttribute('role', 'status'); n.textContent = '✨ Site updated';
+    let how; try { how = sessionStorage.getItem('site-updated'); if (!how) return; sessionStorage.removeItem('site-updated'); } catch (e) { return; }
+    if (how === 'kept') restore();
+    const n = document.createElement('div'); n.setAttribute('role', 'status'); n.textContent = how === 'kept' ? '✨ Site updated. Your work is still here.' : '✨ Site updated';
     n.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:84px;z-index:2000;padding:10px 18px;border-radius:999px;background:#15803D;color:#fff;font:600 15px/1.3 system-ui,sans-serif;box-shadow:0 6px 24px #0004';
     document.body.appendChild(n); setTimeout(() => n.remove(), 3500);
   };

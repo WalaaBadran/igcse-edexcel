@@ -505,7 +505,7 @@ async function visitsHook(request, env, ctx) {
       await env.DB.prepare('DELETE FROM vdev WHERE site = ?1 AND day = ?2').bind(st, d).run();
     }
     if (env.DB) { await visitsTable(env.DB); rows = (await env.DB.prepare('SELECT day, site, opens, devices FROM visits ORDER BY day DESC').all()).results || [];
-      devs = (await env.DB.prepare('SELECT day, site, at, kind, secs, pages FROM vdev ORDER BY day DESC, at DESC').all()).results || []; }
+      devs = (await env.DB.prepare('SELECT day, site, at, kind, secs, pages FROM vdev WHERE day >= ?1 ORDER BY day DESC, at DESC').bind(vDay(1)).all()).results || []; }   // today and yesterday only (user 2026-10-21); older days are in the counts
     // 💬 messages, 📊 parts used (last 7 days), 👀 show links (v6, 2026-10-21)
     let chats = [], uses = [], passes = [], puse = [];
     if (env.DB) {
@@ -632,7 +632,7 @@ ${passes.length ? `<div class="wrap" style="margin-top:10px"><table style="min-w
 <div class="wrap"><table><tr><th>Day</th>${sites.map(s => `<th>${VSITES[s]}</th>`).join('')}<th>Day total</th></tr>
 ${days.length ? days.map(d => `<tr><td>${nice(d)}</td>${sites.map(s => cell(d, s)).join('')}<td><b>${sum(rows.filter(r => r.day === d))[0]}</b>${used2(d) ? `<small> · ${used2(d)} used</small>` : ''}</td></tr>`).join('') : `<tr><td colspan="${sites.length + 2}">No visits counted yet. Open any site, then refresh this page.</td></tr>`}
 <tr class="t"><td><b>Total</b></td>${sites.map(s => `<td>${pair(sum(rows.filter(r => r.site === s)))}</td>`).join('')}<td>${pair(sum(rows))}</td></tr></table></div>
-<h2 style="margin:20px 0 4px">🆕 Which devices (last 3 days)</h2><p>Each new device, with the time it first opened that site (UAE) and its type. Use it to tell your own devices from anyone else's. <b>Time used</b> counts only while the student is tapping, typing, scrolling, watching a video or listening; it arrives after 15 seconds of use and then every minute. <small>starting…</small> = opened in the last few minutes, no time sent yet. <small>quick look</small> = opened and left within seconds. This page updates itself every minute.</p>
+<h2 style="margin:20px 0 4px">🆕 Which devices (today and yesterday)</h2><p>Each new device, with the time it first opened that site (UAE) and its type. Use it to tell your own devices from anyone else's. <b>Time used</b> counts only while the student is tapping, typing, scrolling, watching a video or listening; it arrives after 15 seconds of use and then every minute. <small>starting…</small> = opened in the last few minutes, no time sent yet. <small>quick look</small> = opened and left within seconds. This page updates itself every minute.</p>
 <div class="wrap"><table style="min-width:0"><tr><th>Day</th><th>Site</th><th>First opened</th><th>Device</th><th>Time used</th><th>Pages</th></tr>
 ${devs.length ? devs.map(r => `<tr><td>${nice(r.day)}</td><td>${VSITES[r.site] || r.site}</td><td>${r.at || '<small>before times were saved</small>'}</td><td>${r.kind || '<small>not saved</small>'}</td><td>${mins(r)}</td><td>${r.pages || 1}</td></tr>`).join('') : '<tr><td colspan="6">No devices yet.</td></tr>'}</table></div>
 <p style="margin-top:12px">Open this page once on each phone or laptop you use, and your visits on it stop being counted (numbers up to 19 Oct may include yours). A phone in private mode, or the same phone in a different browser, counts as another device. Cloudflare Web Analytics (dash.cloudflare.com) also has visit numbers; it counts everyone, you too.</p>

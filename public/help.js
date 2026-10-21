@@ -264,6 +264,10 @@ ${fixesHTML()}
     const open = !!document.querySelector('body > .chatside');
     t.classList.toggle('chatnew', newReplies > 0 && !open);
     t.querySelector('.chattab-t').textContent = open ? '✕ Close' : newReplies ? `💬 ${newReplies === 1 ? 'New reply! Tap to read' : newReplies + ' new replies! Tap to read'}` : '🚩 Report a mistake';
+    // a red number on the corner, like a phone's new-message badge (user 2026-10-21: "the color indicated a new message received")
+    let n = t.querySelector('.chatcount');
+    if (newReplies && !open) { if (!n) { n = document.createElement('span'); n.className = 'chatcount'; n.setAttribute('aria-hidden', 'true'); t.appendChild(n); } n.textContent = newReplies > 9 ? '9+' : String(newReplies); }
+    else if (n) n.remove();
     t.setAttribute('aria-label', newReplies ? 'You have a new reply: open the chat' : 'Report a mistake, or send an idea, to the person who made this site');
   }
   /* storage that never breaks the page (private mode can block it) */
@@ -463,9 +467,10 @@ ${fixesHTML()}
 .chatbadge { display: inline-block; margin-left: 4px; padding: 1px 8px; border-radius: 999px; background: var(--brand, #1D4ED8); color: #fff; font-size: 12px; font-weight: 700; }
 .chattab { position: fixed; z-index: 58; right: max(14px, env(safe-area-inset-right, 0px)); bottom: calc(var(--chatnav, 0px) + 14px + env(safe-area-inset-bottom, 0px)); display: inline-flex; align-items: center; gap: 8px; padding: 13px 20px; border: 0; border-radius: 999px; background: var(--brand, #1D4ED8); color: #fff; font: inherit; font-size: 16px; font-weight: 700; line-height: 1.2; cursor: pointer; box-shadow: 0 6px 22px rgba(0,0,0,.28); }
 .chattab:hover { filter: brightness(1.08); }
+.chattab .chatcount { position: absolute; top: -8px; right: -6px; min-width: 24px; height: 24px; padding: 0 6px; box-sizing: border-box; border-radius: 12px; background: #DC2626; color: #fff; border: 2px solid #fff; font-size: 13px; font-weight: 800; line-height: 20px; text-align: center; }
 .chattab:focus-visible { outline: 3px solid #93C5FD; outline-offset: 3px; }
 .chattab.chatnew { animation: chatflash 1.1s ease-in-out infinite; }
-@keyframes chatflash { 0%, 100% { background: #1D4ED8; box-shadow: 0 0 0 0 rgba(37,99,235,.7); } 50% { background: #60A5FA; box-shadow: 0 0 0 10px rgba(37,99,235,0); } }
+@keyframes chatflash { 0%, 100% { background: #1D4ED8; box-shadow: 0 0 0 0 rgba(37,99,235,.75); } 50% { background: #3B82F6; box-shadow: 0 0 0 14px rgba(37,99,235,0); } }
 @media (prefers-reduced-motion: reduce) { .chattab.chatnew { animation: none; background: #2563EB; outline: 3px solid #93C5FD; } }
 .chatside { position: fixed; z-index: 59; right: max(8px, env(safe-area-inset-right, 0px)); bottom: calc(var(--chatnav, 0px) + 78px + env(safe-area-inset-bottom, 0px)); width: min(400px, calc(100vw - 16px)); max-height: calc(100vh - var(--chatnav, 0px) - 150px); overflow-y: auto; box-sizing: border-box; padding: 12px 14px; border-radius: 16px; border: 2px solid var(--brand, #1D4ED8); background: var(--card, #fff); color: var(--ink, #1d2433); box-shadow: 0 12px 40px rgba(0,0,0,.25); text-align: left; }
 /* phones (portrait, or landscape with a short screen): the chat opens full screen; tablets and laptops keep the pop-up beside the page */

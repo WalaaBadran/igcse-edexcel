@@ -307,7 +307,7 @@ async function visitsHook(request, env, ctx) {
   }
   // 💬 owner actions from the private page (forms, so they work without any script): reply, finish a conversation,
   // make or stop a "show link"
-  if (/^\/__visits\/(reply|done|pass|stop|solved)$/.test(url.pathname) && request.method === 'POST') {
+  if (/^\/__visits\/(reply|done|pass|stop|reopen|solved)$/.test(url.pathname) && request.method === 'POST') {
     let f; try { f = await request.formData(); } catch (e) { return new Response('Bad request', { status: 400 }); }
     const k = String(f.get('k') || '');
     if (!env.DB || !(await vOwner(k))) return new Response('Not found', { status: 404, headers: { 'x-robots-tag': 'noindex' } });
@@ -339,7 +339,14 @@ async function visitsHook(request, env, ctx) {
       }
       back += '#show';
     }
-    if (op === 'stop') { await env.DB.prepare('UPDATE vpass SET uses = 0 WHERE rowid = ?').bind(Number(f.get('id')) || 0).run(); back += '#show'; }
+    if (op === 'stop' || op === 'reopen') {   // ⏹ stop a link, or ↩ give a stopped / used-up link one more go (user 2026-10-21); both are noted
+      const id = Number(f.get('id')) || 0, row = await env.DB.prepare('SELECT tok, site FROM vpass WHERE rowid = ?').bind(id).first();
+      if (row) {
+        await env.DB.prepare(op === 'stop' ? 'UPDATE vpass SET uses = 0 WHERE rowid = ?' : 'UPDATE vpass SET uses = 1, created = MAX(created, ?2 - 13 * 864e5) WHERE rowid = ?1 AND uses = 0').bind(...(op === 'stop' ? [id] : [id, Date.now()])).run();
+        await env.DB.prepare('INSERT INTO vpassuse (pass, at, site, kind) VALUES (?1, ?2, ?3, ?4)').bind(row.tok, Date.now(), row.site, op).run();
+      }
+      back += '#show';
+    }
     return new Response(null, { status: 303, headers: { location: back, 'cache-control': 'no-store' } });
   }
   // 👀 the show link itself. Opening it only shows a button (message apps open links to make previews, and that must not use
@@ -464,7 +471,9 @@ ${isOpen ? (canReply ? `<form method="post" action="/__visits/reply" class="rf">
     // each go of a show link: when it was opened and the sites that visit went to (hub = "Hub")
     const siteName = s => /^year\d$/.test(s) ? 'Hub' : (VSITES[s] || s);
     const goes = tok => {   // each go: when, about how long, and the sites with the pages opened on each
-      const ev = puse.filter(x => x.pass === tok); if (!ev.length) return '<small>not opened yet</small>';
+      const all = puse.filter(x => x.pass === tok), ev = all.filter(x => x.kind !== 'stop' && x.kind !== 'reopen');
+      const notes = all.filter(x => x.kind === 'stop' || x.kind === 'reopen').map(x => `<small>${x.kind === 'stop' ? '⏹ stopped by you' : '↩ reopened by you'} at ${when(x.at)}</small>`).join('<br>');
+      if (!ev.length) return (notes ? notes + '<br>' : '') + '<small>not opened yet</small>';
       const out = [];
       for (const x of ev) {
         if (x.kind === 'open' || !out.length) out.push({ at: x.at, secs: 0, sites: new Map() });
@@ -473,7 +482,7 @@ ${isOpen ? (canReply ? `<form method="post" action="/__visits/reply" class="rf">
         if (x.kind === 'use') { g.secs += x.secs || 0; if (x.part) g.sites.get(nm).add(uname(x.part)); }
       }
       const mins = g => g.secs >= 60 ? `about ${Math.round(g.secs / 60)} min` : g.secs ? 'under 1 min' : '<small>time not recorded</small>';
-      return out.map((g, i) => `<b>Go ${i + 1}:</b> ${when(g.at)} · ${mins(g)}<br>${[...g.sites].map(([s, ps]) => `<b>${esc(s)}</b>${ps.size ? ': ' + [...ps].map(esc).join(', ') : ''}`).join(' · ')}`).join('<br>');
+      return out.map((g, i) => `<b>Go ${i + 1}:</b> ${when(g.at)} · ${mins(g)}<br>${[...g.sites].map(([s, ps]) => `<b>${esc(s)}</b>${ps.size ? ': ' + [...ps].map(esc).join(', ') : ''}`).join(' · ')}`).join('<br>') + (notes ? '<br>' + notes : '');
     };
     const used2 = d => devs.filter(x => x.day === d && (x.secs || 0) >= 120).length;
     const used = (d, s) => devs.filter(x => x.day === d && x.site === s && (x.secs || 0) >= 120).length;
@@ -523,7 +532,7 @@ ${useRows.length ? `<div class="wrap"><table style="min-width:0"><tr><th>Site</t
 <h2 id="show">👀 Show links</h2><p>A link for someone outside the class, for example a friend. It can be opened <b>twice only</b>, then it stops (and after 14 days). Choose a year group’s hub to show the hub page <b>and all its subject sites</b>: each go is one visit of about 6 hours, moving freely between them. While they use it, nothing is saved on their device, they are not counted, and the message buttons are hidden. Below you see, for each go: when it was opened, about how long it lasted on the subject sites, and the pages looked at on each site (the link page tells them you can see this). The sites have no password, so it can’t stop someone who copies a normal web address.</p>
 <form method="post" action="/__visits/pass" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px">${hid('k', k)}<label for="ps">Show:</label><select id="ps" name="site">${[...Object.keys(VHUBS), ...Object.keys(VSITES)].map(s => `<option value="${s}">${esc(vPassName(s))}</option>`).join('')}</select><button type="submit">Make a show link</button></form>
 ${newLink ? `<div class="newlink"><b>Your new show link</b> (it is shown only now):<br><span id="nl">${esc(newLink)}</span><br><button type="button" id="cp" style="margin-top:8px">Copy the link</button> <span id="cpd" class="small"></span></div>` : ''}
-${passes.length ? `<div class="wrap" style="margin-top:10px"><table style="min-width:0"><tr><th>Link for</th><th>Made</th><th>Goes left</th><th style="text-align:left">Opened (UAE time) and sites visited</th><th></th></tr>${passes.map(p => `<tr><td>${esc(vPassName(p.site))}</td><td>${when(p.created)}</td><td>${p.uses > 0 ? p.uses + ' of 2' : 'used up / stopped'}</td><td class="l">${goes(p.tok)}</td><td>${p.uses > 0 ? `<form method="post" action="/__visits/stop" style="margin:0">${hid('k', k)}${hid('id', p.id)}<button type="submit" class="ghost">Stop it</button></form>` : ''}</td></tr>`).join('')}</table></div>` : ''}
+${passes.length ? `<div class="wrap" style="margin-top:10px"><table style="min-width:0"><tr><th>Link for</th><th>Made</th><th>Goes left</th><th style="text-align:left">Opened (UAE time) and sites visited</th><th></th></tr>${passes.map(p => `<tr><td>${esc(vPassName(p.site))}</td><td>${when(p.created)}</td><td>${p.uses > 0 ? p.uses + ' of 2' : 'used up / stopped'}</td><td class="l">${goes(p.tok)}</td><td>${p.uses > 0 ? `<form method="post" action="/__visits/stop" style="margin:0">${hid('k', k)}${hid('id', p.id)}<button type="submit" class="ghost">Stop it</button></form>` : `<form method="post" action="/__visits/reopen" style="margin:0">${hid('k', k)}${hid('id', p.id)}<button type="submit" class="ghost" title="The same link works one more time">↩ Reopen (1 more go)</button></form>`}</td></tr>`).join('')}</table></div>` : ''}
 <h2 id="visits">📈 Visits</h2>
 <div class="wrap"><table><tr><th>Day</th>${sites.map(s => `<th>${VSITES[s]}</th>`).join('')}<th>Day total</th></tr>
 ${days.length ? days.map(d => `<tr><td>${nice(d)}</td>${sites.map(s => cell(d, s)).join('')}<td><b>${sum(rows.filter(r => r.day === d))[0]}</b>${used2(d) ? `<small> · ${used2(d)} used</small>` : ''}</td></tr>`).join('') : `<tr><td colspan="${sites.length + 2}">No visits counted yet. Open any site, then refresh this page.</td></tr>`}

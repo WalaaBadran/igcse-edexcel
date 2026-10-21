@@ -5,7 +5,13 @@
    message buttons). Copied into each site by hub-work/add_chat.py. */
 (function () {
   try {
-    if (sessionStorage.getItem('guest') !== '1' || Storage.prototype.__guest) return;
+    // the guest address /__g/<visit>/ (the friend's view) always means guest mode, also in a new tab
+    var ga = location.pathname.match(/^\/__g\/([a-f0-9]{32})\//);
+    if (ga) { sessionStorage.setItem('guest', '1'); sessionStorage.setItem('gtok', ga[1]); }
+    if (sessionStorage.getItem('guest') !== '1') return;
+    // no offline copy of the site on a guest's device
+    try { if (navigator.serviceWorker) Object.defineProperty(navigator.serviceWorker, 'register', { value: function () { return Promise.reject(new Error('guest')); } }); } catch (e) {}
+    if (Storage.prototype.__guest) return;
     var L = window.localStorage, S = window.sessionStorage, P = Storage.prototype, g = P.getItem, st = P.setItem, rm = P.removeItem, cl = P.clear;
     P.getItem = function (x) { return this === L ? g.call(S, 'g:' + x) : g.call(this, x); };
     P.setItem = function (x, v) { return this === L ? st.call(S, 'g:' + x, v) : st.call(this, x, v); };

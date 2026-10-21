@@ -6,7 +6,8 @@
      works twice only ... not save anything"). Everything the site would keep in this browser is kept only until the tab is
      closed (localStorage → sessionStorage), no visit or usage numbers are sent, and the message buttons are hidden.
      help.js loads before each site's own scripts, so they all see this. */
-  const GUEST = (() => { try { return sessionStorage.getItem('guest') === '1'; } catch (e) { return false; } })();
+  const GA = location.pathname.match(/^\/__g\/([a-f0-9]{32})\//);   // the guest address of a show-link visit (see guest.js)
+  const GUEST = (() => { try { if (GA) { sessionStorage.setItem('guest', '1'); sessionStorage.setItem('gtok', GA[1]); } return sessionStorage.getItem('guest') === '1'; } catch (e) { return false; } })();
   if (GUEST && !Storage.prototype.__guest) try {   // normally guest.js has done this already, as the first script on the page
     const L = window.localStorage, S = window.sessionStorage, P = Storage.prototype, g = P.getItem, st = P.setItem, rm = P.removeItem, cl = P.clear;
     P.getItem = function (x) { return this === L ? g.call(S, 'g:' + x) : g.call(this, x); };
@@ -19,6 +20,7 @@
   if (GUEST) document.addEventListener('click', e => {
     const a = e.target.closest && e.target.closest('a[href]'); if (!a) return;
     let u, g = null; try { u = new URL(a.href, location.href); g = sessionStorage.getItem('gtok'); } catch (er) { return; }
+    if (u.host === location.host) { if (GA && !u.pathname.startsWith('/__g/')) a.href = GA[0].slice(0, -1) + u.pathname + u.search + u.hash; return; }   // stay on the guest address
     if (!g || u.host === location.host || !/^year\d[\w-]*\.deirarevise\.workers\.dev$/.test(u.host)) return;
     e.preventDefault(); location.href = 'https://' + u.host + '/__guest/' + g + '?to=' + encodeURIComponent(u.pathname + u.search + u.hash);
   }, true);
@@ -183,6 +185,10 @@ ${fixesHTML()}
      🚩 a mistake, 💡 an idea, 👎 something they don't like; the conversation and the parent's replies are kept. A new reply makes
      the tab flash blue, with a badge, until the student opens it. */
   function chatTab() {
+    if (GUEST && !document.querySelector('body > .guestbadge')) {   // 👀 a show-link visit: a small reminder, where the chat button would be
+      const g = document.createElement('div'); g.className = 'guestbadge'; g.setAttribute('role', 'note');
+      g.textContent = '👀 Guest view, for you only · please don’t share'; document.body.appendChild(g); chatPlace();
+    }
     if (GUEST || document.querySelector('body > .chattab')) return;
     const t = document.createElement('button'); t.type = 'button'; t.className = 'chattab';
     t.setAttribute('aria-label', 'Report a mistake, or send an idea, to the person who made this site');
@@ -412,7 +418,7 @@ ${fixesHTML()}
       const d = document.createElement('div'); d.className = 'flagbar';
       d.innerHTML = (canSpeak ? `<button type="button" class="readbtn">${speaking ? '⏹ Stop reading' : '🔊 Read aloud'}</button>` : '')
         + `<button type="button" class="bigbtn" aria-pressed="${bigOn()}">A+ Bigger text</button>`
-        + (GUEST ? '<p class="guestline small">👀 Guest view: nothing is saved on this device.</p>'
+        + (GUEST ? '<p class="guestline small">👀 Guest view, shown to you only: please don’t share this site or its address. Nothing you do is saved on this device.</p>'
           : `<div class="ratebar small">${sget('rated:' + partNow()) ? 'Thank you for your answer!' : 'Was this page helpful? <button type="button" class="rateup" aria-label="Yes, it was helpful">👍</button><button type="button" class="ratedn" aria-label="No, it was not helpful">👎</button>'}</div>`)
         + `<div class="flagmsg small" role="status"></div>`
         + (YR ? `<a class="yrlink small" href="https://year${YR}.deirarevise.workers.dev/">🏠 All Year ${YR} subjects</a>` : '')
@@ -483,6 +489,7 @@ ${fixesHTML()}
 .chatbadge { display: inline-block; margin-left: 4px; padding: 1px 8px; border-radius: 999px; background: var(--brand, #1D4ED8); color: #fff; font-size: 12px; font-weight: 700; }
 .chattab { position: fixed; z-index: 58; right: max(14px, env(safe-area-inset-right, 0px)); bottom: calc(var(--chatnav, 0px) + 14px + env(safe-area-inset-bottom, 0px)); display: inline-flex; align-items: center; gap: 8px; padding: 13px 20px; border: 0; border-radius: 999px; background: var(--brand, #1D4ED8); color: #fff; font: inherit; font-size: 16px; font-weight: 700; line-height: 1.2; cursor: pointer; box-shadow: 0 6px 22px rgba(0,0,0,.28); }
 .chattab:hover { filter: brightness(1.08); }
+.guestbadge { position: fixed; z-index: 58; right: max(14px, env(safe-area-inset-right, 0px)); bottom: calc(var(--chatnav, 0px) + 14px + env(safe-area-inset-bottom, 0px)); padding: 9px 14px; border-radius: 999px; background: #1F2937; color: #fff; font-size: 14px; font-weight: 600; box-shadow: 0 4px 14px rgba(0,0,0,.25); pointer-events: none; }
 .chattab .chatcount { position: absolute; top: -8px; right: -6px; min-width: 24px; height: 24px; padding: 0 6px; box-sizing: border-box; border-radius: 12px; background: #DC2626; color: #fff; border: 2px solid #fff; font-size: 13px; font-weight: 800; line-height: 20px; text-align: center; }
 .chattab:focus-visible { outline: 3px solid #93C5FD; outline-offset: 3px; }
 .chattab.chatnew { animation: chatflash 1.1s ease-in-out infinite; }

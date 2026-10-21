@@ -219,8 +219,10 @@ async function visitsTable(db) {
   for (const c of ['secs', 'pages']) { try { await db.prepare(`ALTER TABLE vdev ADD COLUMN ${c} INTEGER`).run(); } catch (e) {} }   // added in v5
   await db.prepare('CREATE TABLE IF NOT EXISTS vuse (day TEXT, site TEXT, part TEXT, n INTEGER, PRIMARY KEY (day, site, part))').run();   // v6: parts used
   await db.prepare('CREATE TABLE IF NOT EXISTS vpass (tok TEXT PRIMARY KEY, site TEXT, uses INTEGER, created INTEGER)').run();   // v6: show links
+  try { await db.prepare('ALTER TABLE vpass ADD COLUMN devh TEXT').run(); } catch (e) {}   // v9: the one device a show link works on
   await db.prepare('CREATE TABLE IF NOT EXISTS vguest (tok TEXT PRIMARY KEY, scope TEXT, exp INTEGER)').run();   // v7: guest visits across sites
   try { await db.prepare('ALTER TABLE vguest ADD COLUMN pass TEXT').run(); } catch (e) {}
+  await db.prepare('CREATE TABLE IF NOT EXISTS vgdev (g TEXT, site TEXT, devh TEXT, PRIMARY KEY (g, site))').run();   // v9: the device of each guest visit
   // v7: when each show link was opened and which sites the visit went to (user 2026-10-21: "can i know if the friend visited the
   // show link everytime he uses it"); kept on this server only, nothing on the visitor's device
   await db.prepare('CREATE TABLE IF NOT EXISTS vpassuse (pass TEXT, at INTEGER, site TEXT, kind TEXT)').run();
@@ -239,10 +241,30 @@ const vPassHost = s => VHUBS[s] ? VHUBS[s][1] : vHost(s);
 async function vGuestNew(db, scope, pass) {   // a guest visit: valid about 6 hours on the hub and every subject site
   const gs = (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g, '').slice(0, 32), now = Date.now();
   await db.prepare('DELETE FROM vguest WHERE exp < ?1').bind(now - 864e5).run();
+  await db.prepare('DELETE FROM vgdev WHERE g NOT IN (SELECT tok FROM vguest)').run();
   await db.prepare('INSERT INTO vguest (tok, scope, exp, pass) VALUES (?1, ?2, ?3, ?4)').bind(await vsha('guest:' + gs), scope, now + 6 * 3600e3, pass).run();
   await db.prepare("INSERT INTO vpassuse (pass, at, site, kind) VALUES (?1, ?2, ?3, 'open')").bind(pass, now, scope).run();
   return gs;
 }
+// 🔒 for showing, not for sharing (user 2026-10-21: "the links i send to friends for showing only not for sharing, this is very
+// important"). A show link, and the guest visit it starts, work on ONE device: the first one that opens it. That device gets
+// one small cookie (a random number, only for show-link visitors, kept 14 days); the server keeps only its hash. During the
+// visit the sites open at a guest address, /__g/<visit>/..., not at their plain address, so a copy of what is in the address
+// bar does not open on another device, and stops when the visit ends.
+const vDevCookie = request => ((request.headers.get('cookie') || '').match(/(?:^|;\s*)vgd=([a-f0-9]{32})/) || [])[1] || '';
+const vNewHex = () => (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g, '').slice(0, 32);
+const vDevSet = dv => `vgd=${dv}; Path=/; Max-Age=1209600; HttpOnly; Secure; SameSite=Lax`;
+async function vGuestDev(db, gh, site, dv, bind) {   // is this guest visit tied to this device on this site? (bind: tie it now if it is free)
+  const dh = dv ? await vsha('dev:' + dv) : '';
+  let row = await db.prepare('SELECT devh FROM vgdev WHERE g = ?1 AND site = ?2').bind(gh, site).first();
+  if (!row && bind && dh) {
+    await db.prepare('INSERT OR IGNORE INTO vgdev (g, site, devh) VALUES (?1, ?2, ?3)').bind(gh, site, dh).run();
+    row = await db.prepare('SELECT devh FROM vgdev WHERE g = ?1 AND site = ?2').bind(gh, site).first();
+  }
+  return !!(row && dh && row.devh === dh);
+}
+const vGuestPage = (title, body, setCk) => new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${title}</title><style>body{margin:0 auto;padding:24px 16px;font:17px/1.5 system-ui,sans-serif;background:#f4f6fb;color:#1d2433;max-width:560px}@media (prefers-color-scheme:dark){body{background:#12151c;color:#e8ecf3}}h1{font-size:24px}</style></head><body>${body}</body></html>`,
+  { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-robots-tag': 'noindex, nofollow', 'referrer-policy': 'no-referrer', ...(setCk ? { 'set-cookie': setCk } : {}) } });
 const vHost = s => VHOST[s] || `${s}.deirarevise.workers.dev`;
 const vsha = async t => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t)))].map(b => b.toString(16).padStart(2, '0')).join('');
 const vOwner = async k => (await vsha('deirarevise-visits:' + k)) === VISITS_HASH;
@@ -368,44 +390,68 @@ async function visitsHook(request, env, ctx) {
     }
     return new Response(null, { status: 204, headers: { 'cache-control': 'no-store' } });
   }
-  // 👀 arriving from the hub or another subject site during a guest visit: this site opens in guest mode too
+  // 👀 the guest address /__g/<visit>/...: pages open only on the visit's own device and only while the visit lasts; then the
+  // site's normal file is served (the Worker carries on with the address without /__g/<visit>)
+  const gp = url.pathname.match(/^\/__g\/([a-f0-9]{32})(\/.*)?$/);
+  if (gp) {
+    if (!gp[2]) return Response.redirect(`${url.origin}/__g/${gp[1]}/${url.search}`, 302);
+    if (['GET', 'HEAD'].includes(request.method) && (request.headers.get('sec-fetch-dest') === 'document' || gp[2] === '/' || /\.html?$/.test(gp[2]))) {
+      let ok = false, mine = false;
+      if (env.DB) {
+        await visitsTable(env.DB); const gh = await vsha('guest:' + gp[1]);
+        const r = await env.DB.prepare('SELECT exp FROM vguest WHERE tok = ?1').bind(gh).first(); ok = !!(r && r.exp > Date.now());
+        if (ok) mine = await vGuestDev(env.DB, gh, url.hostname.split('.')[0], vDevCookie(request), false);
+      }
+      if (!ok) return vGuestPage('Visit ended', `<h1>This visit has ended</h1><p>A guest visit lasts a few hours. Please ask the person who sent the link for a new one.</p>`);
+      if (!mine) return vGuestPage('For one person only', `<h1>🔒 This page is for one person only</h1><p>It is part of a guest visit that was sent to someone to look at on their own device. It does not open on other devices. Please ask the person who made the site.</p>`);
+    }
+    const inner = new URL(url); inner.pathname = gp[2];
+    return new Request(inner.toString(), request);
+  }
+  // 👀 arriving from the hub or another subject site during a guest visit: this site opens in guest mode too, on this device only
   const gm = url.pathname.match(/^\/__guest\/([a-f0-9]{32})$/);
   if (gm && request.method === 'GET') {
-    let ok = false;
+    let ok = false, mine = false; const ck = vDevCookie(request), dv = ck || vNewHex();
     if (env.DB) {
-      await visitsTable(env.DB); const r = await env.DB.prepare('SELECT exp, pass FROM vguest WHERE tok = ?1').bind(await vsha('guest:' + gm[1])).first(); ok = !!(r && r.exp > Date.now());
-      if (ok && r.pass) await env.DB.prepare("INSERT INTO vpassuse (pass, at, site, kind) VALUES (?1, ?2, ?3, 'site')").bind(r.pass, Date.now(), url.hostname.split('.')[0]).run();
+      await visitsTable(env.DB); const gh = await vsha('guest:' + gm[1]);
+      const r = await env.DB.prepare('SELECT exp, pass FROM vguest WHERE tok = ?1').bind(gh).first(); ok = !!(r && r.exp > Date.now());
+      if (ok) mine = await vGuestDev(env.DB, gh, url.hostname.split('.')[0], dv, true);
+      if (ok && mine && r.pass) await env.DB.prepare("INSERT INTO vpassuse (pass, at, site, kind) VALUES (?1, ?2, ?3, 'site')").bind(r.pass, Date.now(), url.hostname.split('.')[0]).run();
     }
     const to = url.searchParams.get('to') || '/', safeTo = /^\/(?!\/)/.test(to) ? to : '/';
-    return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Opening…</title></head><body style="font:17px system-ui;padding:24px 16px">${ok
-      ? `<p>Opening…</p><script>try { sessionStorage.setItem('guest', '1'); sessionStorage.setItem('gtok', ${JSON.stringify(gm[1])}); } catch (e) {} location.replace(${JSON.stringify(safeTo)});</script>`
-      : '<h1>This visit has ended</h1><p>A guest visit lasts a few hours. Please ask the person who sent the link for a new one.</p>'}</body></html>`,
-      { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-robots-tag': 'noindex, nofollow', 'referrer-policy': 'no-referrer' } });
+    if (!ok) return vGuestPage('Visit ended', `<h1>This visit has ended</h1><p>A guest visit lasts a few hours. Please ask the person who sent the link for a new one.</p>`);
+    if (!mine) return vGuestPage('For one person only', `<h1>🔒 This page is for one person only</h1><p>It is part of a guest visit that was sent to someone to look at on their own device. It does not open on other devices. Please ask the person who made the site.</p>`);
+    return vGuestPage('Opening…', `<p>Opening…</p><script>try { sessionStorage.setItem('guest', '1'); sessionStorage.setItem('gtok', ${JSON.stringify(gm[1])}); } catch (e) {} location.replace(${JSON.stringify('/__g/' + gm[1] + safeTo)});</script>`, ck ? '' : vDevSet(dv));
   }
   const sm = url.pathname.match(/^\/__show\/([a-f0-9]{32})$/);
   if (sm && (request.method === 'GET' || request.method === 'POST')) {
     const site = url.hostname.split('.')[0], h = await vsha('pass:' + sm[1]), since = Date.now() - 14 * 864e5;
-    let left = 0, opened = false, gs = '';
+    // 🔒 for showing, not for sharing (user 2026-10-21: "the links i send to friends for showing only not for sharing, this is very
+    // important"): the first device that opens the link gets a small cookie for this link page only, and the link then works on
+    // that device only; a forwarded copy does not open
+    const ck = vDevCookie(request);
+    let left = 0, opened = false, gs = '', other = false, setCk = '';
     if (env.DB) {
       await visitsTable(env.DB);
-      if (request.method === 'POST') {
-        const r = await env.DB.prepare('UPDATE vpass SET uses = uses - 1 WHERE tok = ?1 AND site = ?2 AND uses > 0 AND created > ?3').bind(h, site, since).run();
+      const row = await env.DB.prepare('SELECT uses, devh FROM vpass WHERE tok = ?1 AND site = ?2 AND created > ?3').bind(h, site, since).first();
+      other = !!(row && row.devh && row.devh !== (ck ? await vsha('dev:' + ck) : ''));
+      if (request.method === 'POST' && row && !other) {
+        const dv = ck || vNewHex(), dh = await vsha('dev:' + dv);
+        const r = await env.DB.prepare('UPDATE vpass SET uses = uses - 1, devh = COALESCE(devh, ?4) WHERE tok = ?1 AND site = ?2 AND uses > 0 AND created > ?3 AND (devh IS NULL OR devh = ?4)').bind(h, site, since, dh).run();
         opened = !!(r.meta && r.meta.changes);
-        if (opened) gs = await vGuestNew(env.DB, site, h);
-      } else {
-        const r = await env.DB.prepare('SELECT uses FROM vpass WHERE tok = ?1 AND site = ?2 AND created > ?3').bind(h, site, since).first();
-        left = r ? r.uses : 0;
-      }
+        if (opened) { gs = await vGuestNew(env.DB, site, h); await vGuestDev(env.DB, await vsha('guest:' + gs), site, dv, true); if (!ck) setCk = vDevSet(dv); }
+      } else if (row) left = row.uses;
     }
     const name = VSITES[site] || 'study site';
-    const body = opened ? `<p>Opening ${name}…</p><script>try { sessionStorage.setItem('guest', '1'); sessionStorage.setItem('gtok', ${JSON.stringify(gs)}); } catch (e) {} location.replace('/');</script>`
-      : left > 0 ? `<h1>👀 ${name}</h1><p>You have been sent a link to look at this revision site. It opens in guest mode: nothing is saved on your device. The person who sent it can see when it is opened, for how long, and which pages are looked at.</p>
+    const body = opened ? `<p>Opening ${name}…</p><script>try { sessionStorage.setItem('guest', '1'); sessionStorage.setItem('gtok', ${JSON.stringify(gs)}); } catch (e) {} location.replace(${JSON.stringify('/__g/' + gs + '/')});</script>`
+      : other ? `<h1>🔒 This link is for one person only</h1><p>It was sent to someone to look at the site on their own device, and it has already been opened there. It does not open on other devices. Please ask the person who made the site.</p>`
+      : left > 0 ? `<h1>👀 ${name}</h1><p>You have been sent this link to look at a revision site made by a parent for their class. It is <b>for you only</b>: it opens on the first device you use and then works only there, so please don’t share it or the site’s address. (For this, one small cookie is kept on that device for 2 weeks.)</p><p>It opens in guest mode: nothing you do on the site is saved on your device. The person who sent it can see when it is opened, for how long, and which pages are looked at.</p>
 <p>This link works <b>${left === 1 ? 'one more time' : 'twice'}</b>.</p><form method="post"><button type="submit">Open the site</button></form>`
       : `<h1>This link has stopped working</h1><p>It could be opened twice, and it has been used. Please ask the person who sent it for a new one.</p>`;
     return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${name}</title>
 <style>body{margin:0;padding:24px 16px;font:17px/1.5 system-ui,sans-serif;background:#f4f6fb;color:#1d2433;max-width:560px;margin-inline:auto}
 @media (prefers-color-scheme:dark){body{background:#12151c;color:#e8ecf3}}h1{font-size:24px}button{font:inherit;font-weight:700;padding:12px 22px;border-radius:999px;border:0;background:#0E8F6E;color:#fff;cursor:pointer}</style></head><body>${body}</body></html>`,
-      { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-robots-tag': 'noindex, nofollow', 'referrer-policy': 'no-referrer' } });
+      { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-robots-tag': 'noindex, nofollow', 'referrer-policy': 'no-referrer', ...(setCk ? { 'set-cookie': setCk } : {}) } });
   }
   if (url.pathname === '/__visits' && request.method === 'GET') {
     const k = url.searchParams.get('k') || '';
@@ -529,7 +575,7 @@ ${fb.length ? `<div class="wrap"><table style="min-width:0"><tr><th>Site</th><th
 ${fb.map(([s, i, d, mk, o]) => `<details${[...i, ...d, ...mk, ...o].some(x => !x.done) ? ' open' : ''}><summary><b>${esc(VSITES[s])}</b></summary><ul>${[...i, ...d, ...mk, ...o].sort((a, b) => b.id - a.id).slice(0, 20).map(x => `<li>${x.done ? '<small>finished</small>' : '<b style="color:#b42318">open</b>'} · ${KIND[x.kind] || KIND.other}: “${esc(x.msg)}” <small>· page: ${esc(x.page || 'Home')} · ${when(x.created)}</small></li>`).join('')}</ul></details>`).join('')}` : '<p>None yet.</p>'}
 <h2 id="use">📊 What students use (last 7 days)</h2><p>How many times each part was opened, all devices together. No device numbers and no names: just totals. Your own devices are not counted.</p>
 ${useRows.length ? `<div class="wrap"><table style="min-width:0"><tr><th>Site</th><th style="text-align:left">Parts opened (most used first)</th></tr>${useRows.map(([s, l]) => `<tr><td>${esc(VSITES[s])}</td><td class="l">${l.slice(0, 14).map(u => `${esc(uname(u.part))} <b>${u.n}</b>`).join(' · ')}</td></tr>`).join('')}</table></div>` : '<p>Nothing yet: counting started on 21 Oct 2026.</p>'}
-<h2 id="show">👀 Show links</h2><p>A link for someone outside the class, for example a friend. It can be opened <b>twice only</b>, then it stops (and after 14 days). Choose a year group’s hub to show the hub page <b>and all its subject sites</b>: each go is one visit of about 6 hours, moving freely between them. While they use it, nothing is saved on their device, they are not counted, and the message buttons are hidden. Below you see, for each go: when it was opened, about how long it lasted on the subject sites, and the pages looked at on each site (the link page tells them you can see this). The sites have no password, so it can’t stop someone who copies a normal web address.</p>
+<h2 id="show">👀 Show links</h2><p>A link for someone outside the class, for example a friend, <b>to show them, not to share</b>. It works <b>only on the first device that opens it</b> (a forwarded copy will not open), it can be opened <b>twice only</b>, then it stops (and after 14 days). Choose a year group’s hub to show the hub page <b>and all its subject sites</b>: each go is one visit of about 6 hours, moving freely between them. While they use it, nothing is saved on their device, they are not counted, and the message buttons are hidden. Below you see, for each go: when it was opened, about how long it lasted on the subject sites, and the pages looked at on each site (the link page tells them you can see this). The sites have no password, so it can’t stop someone who copies a normal web address.</p>
 <form method="post" action="/__visits/pass" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px">${hid('k', k)}<label for="ps">Show:</label><select id="ps" name="site">${[...Object.keys(VHUBS), ...Object.keys(VSITES)].map(s => `<option value="${s}">${esc(vPassName(s))}</option>`).join('')}</select><button type="submit">Make a show link</button></form>
 ${newLink ? `<div class="newlink"><b>Your new show link</b> (it is shown only now):<br><span id="nl">${esc(newLink)}</span><br><button type="button" id="cp" style="margin-top:8px">Copy the link</button> <span id="cpd" class="small"></span></div>` : ''}
 ${passes.length ? `<div class="wrap" style="margin-top:10px"><table style="min-width:0"><tr><th>Link for</th><th>Made</th><th>Goes left</th><th style="text-align:left">Opened (UAE time) and sites visited</th><th></th></tr>${passes.map(p => `<tr><td>${esc(vPassName(p.site))}</td><td>${when(p.created)}</td><td>${p.uses > 0 ? p.uses + ' of 2' : 'used up / stopped'}</td><td class="l">${goes(p.tok)}</td><td>${p.uses > 0 ? `<form method="post" action="/__visits/stop" style="margin:0">${hid('k', k)}${hid('id', p.id)}<button type="submit" class="ghost">Stop it</button></form>` : `<form method="post" action="/__visits/reopen" style="margin:0">${hid('k', k)}${hid('id', p.id)}<button type="submit" class="ghost" title="The same link works one more time">↩ Reopen (1 more go)</button></form>`}</td></tr>`).join('')}</table></div>` : ''}
@@ -565,7 +611,7 @@ ${devs.length ? devs.map(r => `<tr><td>${nice(r.day)}</td><td>${VSITES[r.site] |
 
 export default {
   async fetch(request, env, ctx) {
-    { const v = await visitsHook(request, env, ctx); if (v) return v; }
+    { const v = await visitsHook(request, env, ctx); if (v instanceof Request) request = v; else if (v) return v; }
     const url = new URL(request.url);
     if (url.protocol === 'http:') { url.protocol = 'https:'; return Response.redirect(url.toString(), 301); }
     if (url.pathname === '/api/chat') return secure(await chatApi(request, env, url), request);

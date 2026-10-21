@@ -223,13 +223,16 @@ ${fixesHTML()}
     const app = document.getElementById('app'); if (!app) return;
     const b = app.querySelector(':scope > .flagbar .ideabtn');
     if (b) b.innerHTML = '💬 Ideas &amp; feedback' + (newReplies ? ` <span class="chatbadge">${newReplies} new ${newReplies === 1 ? 'reply' : 'replies'}</span>` : '');
-    let r = app.querySelector(':scope > .replybar');
-    if (!newReplies) { if (r) r.remove(); return; }
+    // a floating notice near the bottom of the screen, seen at once on any page (inside the page it was pushed down by
+    // the video and teacher cards); ✕ hides it until the next page
+    let r = document.querySelector('body > .replybar');
+    if (!newReplies || sget('reply-hide') === String(newReplies) + location.hash) { if (r) r.remove(); return; }
     if (!r) {
-      r = document.createElement('div'); r.className = 'replybar';
-      r.innerHTML = '💬 <b>The parent who made this site replied to your message.</b> <button type="button">Read it</button>';
-      r.querySelector('button').onclick = () => { const i = app.querySelector(':scope > .flagbar .ideabtn'); if (i) { i.scrollIntoView({ behavior: 'smooth', block: 'center' }); chat(i, ''); } };
-      app.insertBefore(r, app.firstChild);
+      r = document.createElement('div'); r.className = 'replybar'; r.setAttribute('role', 'status');
+      r.innerHTML = '<span>💬 <b>The parent who made this site replied to your message.</b></span><button type="button" class="replyread">Read it</button><button type="button" class="replyx" aria-label="Hide this notice">✕</button>';
+      r.querySelector('.replyread').onclick = () => { const i = document.querySelector('#app > .flagbar .ideabtn'); if (i) { i.scrollIntoView({ behavior: 'smooth', block: 'center' }); chat(i, ''); } r.remove(); };
+      r.querySelector('.replyx').onclick = () => { sset('reply-hide', String(newReplies) + location.hash); r.remove(); };
+      document.body.appendChild(r);
     }
   }
   /* storage that never breaks the page (private mode can block it) */
@@ -432,8 +435,10 @@ ${fixesHTML()}
 .chatlog .me { justify-self: end; background: color-mix(in srgb, var(--brand, #1D4ED8) 14%, transparent); border-bottom-right-radius: 4px; }
 .chatlog .them { justify-self: start; background: color-mix(in srgb, var(--muted, #5B6475) 14%, transparent); border-bottom-left-radius: 4px; }
 .chatbadge { display: inline-block; margin-left: 4px; padding: 1px 8px; border-radius: 999px; background: var(--brand, #1D4ED8); color: #fff; font-size: 12px; font-weight: 700; }
-.replybar { margin: 0 0 12px; padding: 10px 14px; border-radius: 12px; border: 2px solid var(--brand, #1D4ED8); background: var(--card, #fff); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.replybar button { padding: 6px 14px; border-radius: 999px; border: 0; background: var(--brand, #1D4ED8); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+.replybar { position: fixed; z-index: 60; left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px)); bottom: calc(84px + env(safe-area-inset-bottom, 0px)); max-width: 560px; margin: 0 auto; padding: 10px 12px 10px 14px; border-radius: 14px; border: 2px solid var(--brand, #1D4ED8); background: var(--card, #fff); color: var(--ink, #1d2433); box-shadow: 0 8px 28px rgba(0,0,0,.18); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.replybar span { flex: 1 1 200px; }
+.replybar .replyread { padding: 6px 14px; border-radius: 999px; border: 0; background: var(--brand, #1D4ED8); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+.replybar .replyx { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line, #CBD5E1); background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .flagbar .dedication { flex-basis: 100%; text-align: center; font-size: 12.5px; line-height: 1.8; margin: 10px 8px 4px; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--brand, #0E8F6E) 8%, transparent); font-family: 'Segoe UI', Tahoma, 'Noto Naskh Arabic', sans-serif; }
 .flagbar .dedication.en { font-size: 11.5px; line-height: 1.6; margin-top: 4px; }
 .flagbar .copyline { flex-basis: 100%; text-align: center; font-size: 12px; line-height: 1.4; color: var(--muted, #5B6475); margin: 6px 8px 0; }

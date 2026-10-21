@@ -219,11 +219,28 @@ async function visitsTable(db) {
   for (const c of ['secs', 'pages']) { try { await db.prepare(`ALTER TABLE vdev ADD COLUMN ${c} INTEGER`).run(); } catch (e) {} }   // added in v5
   await db.prepare('CREATE TABLE IF NOT EXISTS vuse (day TEXT, site TEXT, part TEXT, n INTEGER, PRIMARY KEY (day, site, part))').run();   // v6: parts used
   await db.prepare('CREATE TABLE IF NOT EXISTS vpass (tok TEXT PRIMARY KEY, site TEXT, uses INTEGER, created INTEGER)').run();   // v6: show links
+  await db.prepare('CREATE TABLE IF NOT EXISTS vguest (tok TEXT PRIMARY KEY, scope TEXT, exp INTEGER)').run();   // v7: guest visits across sites
+  try { await db.prepare('ALTER TABLE vguest ADD COLUMN pass TEXT').run(); } catch (e) {}
+  // v7: when each show link was opened and which sites the visit went to (user 2026-10-21: "can i know if the friend visited the
+  // show link everytime he uses it"); kept on this server only, nothing on the visitor's device
+  await db.prepare('CREATE TABLE IF NOT EXISTS vpassuse (pass TEXT, at INTEGER, site TEXT, kind TEXT)').run();
   visitsReady = true;
 }
 // where each site lives: all on deirarevise.workers.dev, except IGCSE Edexcel Maths on its own pages.dev link (user 2026-10-19:
 // "for this site can we change deira revise")
 const VHOST = { 'igcse-edexcel': 'igcse-edexcel.pages.dev' };
+// 👀 a show link can also be for a year group's hub page and all its subject sites (user 2026-10-21: "i want the show link for
+// the hub site and subsites"): one go = one visit of about 6 hours, moving freely between the hub and the subjects in guest mode
+const VHUBS = { 'hub-year9': ['Year 9: hub + all subjects', 'year9.deirarevise.workers.dev'], 'hub-year8': ['Year 8: hub + all subjects', 'year8.deirarevise.workers.dev'] };
+const vPassName = s => (VHUBS[s] || [])[0] || VSITES[s] || s;
+const vPassHost = s => VHUBS[s] ? VHUBS[s][1] : vHost(s);
+async function vGuestNew(db, scope, pass) {   // a guest visit: valid about 6 hours on the hub and every subject site
+  const gs = (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g, '').slice(0, 32), now = Date.now();
+  await db.prepare('DELETE FROM vguest WHERE exp < ?1').bind(now - 864e5).run();
+  await db.prepare('INSERT INTO vguest (tok, scope, exp, pass) VALUES (?1, ?2, ?3, ?4)').bind(await vsha('guest:' + gs), scope, now + 6 * 3600e3, pass).run();
+  await db.prepare("INSERT INTO vpassuse (pass, at, site, kind) VALUES (?1, ?2, ?3, 'open')").bind(pass, now, scope).run();
+  return gs;
+}
 const vHost = s => VHOST[s] || `${s}.deirarevise.workers.dev`;
 const vsha = async t => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t)))].map(b => b.toString(16).padStart(2, '0')).join('');
 const vOwner = async k => (await vsha('deirarevise-visits:' + k)) === VISITS_HASH;
@@ -288,7 +305,7 @@ async function visitsHook(request, env, ctx) {
   }
   // 💬 owner actions from the private page (forms, so they work without any script): reply, finish a conversation,
   // make or stop a "show link"
-  if (/^\/__visits\/(reply|done|pass|stop)$/.test(url.pathname) && request.method === 'POST') {
+  if (/^\/__visits\/(reply|done|pass|stop|solved)$/.test(url.pathname) && request.method === 'POST') {
     let f; try { f = await request.formData(); } catch (e) { return new Response('Bad request', { status: 400 }); }
     const k = String(f.get('k') || '');
     if (!env.DB || !(await vOwner(k))) return new Response('Not found', { status: 404, headers: { 'x-robots-tag': 'noindex' } });
@@ -302,9 +319,18 @@ async function visitsHook(request, env, ctx) {
       back += '#msgs';
     }
     if (op === 'done') { await env.DB.prepare('UPDATE chat SET done = ? WHERE thread = ?').bind(f.get('undo') ? 0 : 1, t).run(); back += '#msgs'; }
+    if (op === 'solved') {   // ✅ one tap: the student is told it is solved and thanked, and the conversation is finished
+      // (user 2026-10-21: "inform the one who flags a mistake if solved and say thanks for flagging and helping to improve")
+      const s = t ? await env.DB.prepare("SELECT site, MAX(kind = 'mistake') AS mk FROM chat WHERE thread = ? AND sender = 'student'").bind(t).first() : null;
+      if (s && s.site && !/^flag-/.test(t)) {
+        const text = s.mk ? '✅ It is fixed now. Thank you for flagging it and helping to improve the site! 🌟' : '✅ Done! Thank you for your idea and for helping to improve the site! 🌟';
+        await env.DB.prepare("INSERT INTO chat (thread, site, sender, kind, page, url, msg, created, done) VALUES (?, ?, 'owner', 'reply', '', '', ?, ?, 1)").bind(t, s.site, text, Date.now()).run();
+      }
+      await env.DB.prepare('UPDATE chat SET done = 1 WHERE thread = ?').bind(t).run(); back += '#msgs';
+    }
     if (op === 'pass') {   // 👀 a link for someone outside the class: opens twice, then stops (user 2026-10-21)
       const ps = String(f.get('site') || '');
-      if (VSITES[ps]) {
+      if (VSITES[ps] || VHUBS[ps]) {
         const tok = (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g, '').slice(0, 32);
         await env.DB.prepare('INSERT INTO vpass (tok, site, uses, created) VALUES (?1, ?2, 2, ?3)').bind(await vsha('pass:' + tok), ps, Date.now()).run();
         back += '&newpass=' + encodeURIComponent(ps + ':' + tok);
@@ -317,23 +343,38 @@ async function visitsHook(request, env, ctx) {
   // 👀 the show link itself. Opening it only shows a button (message apps open links to make previews, and that must not use
   // one of the two goes); the button uses one go and opens the site in guest mode: help.js then saves nothing on that device
   // and nothing is counted.
+  // 👀 arriving from the hub or another subject site during a guest visit: this site opens in guest mode too
+  const gm = url.pathname.match(/^\/__guest\/([a-f0-9]{32})$/);
+  if (gm && request.method === 'GET') {
+    let ok = false;
+    if (env.DB) {
+      await visitsTable(env.DB); const r = await env.DB.prepare('SELECT exp, pass FROM vguest WHERE tok = ?1').bind(await vsha('guest:' + gm[1])).first(); ok = !!(r && r.exp > Date.now());
+      if (ok && r.pass) await env.DB.prepare("INSERT INTO vpassuse (pass, at, site, kind) VALUES (?1, ?2, ?3, 'site')").bind(r.pass, Date.now(), url.hostname.split('.')[0]).run();
+    }
+    const to = url.searchParams.get('to') || '/', safeTo = /^\/(?!\/)/.test(to) ? to : '/';
+    return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Opening…</title></head><body style="font:17px system-ui;padding:24px 16px">${ok
+      ? `<p>Opening…</p><script>try { sessionStorage.setItem('guest', '1'); sessionStorage.setItem('gtok', ${JSON.stringify(gm[1])}); } catch (e) {} location.replace(${JSON.stringify(safeTo)});</script>`
+      : '<h1>This visit has ended</h1><p>A guest visit lasts a few hours. Please ask the person who sent the link for a new one.</p>'}</body></html>`,
+      { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-robots-tag': 'noindex, nofollow', 'referrer-policy': 'no-referrer' } });
+  }
   const sm = url.pathname.match(/^\/__show\/([a-f0-9]{32})$/);
   if (sm && (request.method === 'GET' || request.method === 'POST')) {
     const site = url.hostname.split('.')[0], h = await vsha('pass:' + sm[1]), since = Date.now() - 14 * 864e5;
-    let left = 0, opened = false;
+    let left = 0, opened = false, gs = '';
     if (env.DB) {
       await visitsTable(env.DB);
       if (request.method === 'POST') {
         const r = await env.DB.prepare('UPDATE vpass SET uses = uses - 1 WHERE tok = ?1 AND site = ?2 AND uses > 0 AND created > ?3').bind(h, site, since).run();
         opened = !!(r.meta && r.meta.changes);
+        if (opened) gs = await vGuestNew(env.DB, site, h);
       } else {
         const r = await env.DB.prepare('SELECT uses FROM vpass WHERE tok = ?1 AND site = ?2 AND created > ?3').bind(h, site, since).first();
         left = r ? r.uses : 0;
       }
     }
     const name = VSITES[site] || 'study site';
-    const body = opened ? `<p>Opening ${name}…</p><script>try { sessionStorage.setItem('guest', '1'); } catch (e) {} location.replace('/');</script>`
-      : left > 0 ? `<h1>👀 ${name}</h1><p>You have been sent a link to look at this revision site. It opens in guest mode: nothing is saved on your device.</p>
+    const body = opened ? `<p>Opening ${name}…</p><script>try { sessionStorage.setItem('guest', '1'); sessionStorage.setItem('gtok', ${JSON.stringify(gs)}); } catch (e) {} location.replace('/');</script>`
+      : left > 0 ? `<h1>👀 ${name}</h1><p>You have been sent a link to look at this revision site. It opens in guest mode: nothing is saved on your device. The person who sent it can see when it is opened.</p>
 <p>This link works <b>${left === 1 ? 'one more time' : 'twice'}</b>.</p><form method="post"><button type="submit">Open the site</button></form>`
       : `<h1>This link has stopped working</h1><p>It could be opened twice, and it has been used. Please ask the person who sent it for a new one.</p>`;
     return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${name}</title>
@@ -360,12 +401,13 @@ async function visitsHook(request, env, ctx) {
     if (env.DB) { await visitsTable(env.DB); rows = (await env.DB.prepare('SELECT day, site, opens, devices FROM visits ORDER BY day DESC').all()).results || [];
       devs = (await env.DB.prepare('SELECT day, site, at, kind, secs, pages FROM vdev ORDER BY day DESC, at DESC').all()).results || []; }
     // 💬 messages, 📊 parts used (last 7 days), 👀 show links (v6, 2026-10-21)
-    let chats = [], uses = [], passes = [];
+    let chats = [], uses = [], passes = [], puse = [];
     if (env.DB) {
       await chatSetup(env.DB);
       chats = (await env.DB.prepare('SELECT id, thread, site, sender, kind, page, url, msg, created, done FROM chat ORDER BY id DESC LIMIT 2000').all()).results || [];
       uses = (await env.DB.prepare('SELECT site, part, SUM(n) AS n FROM vuse WHERE day >= ?1 GROUP BY site, part ORDER BY n DESC').bind(vDay(6)).all()).results || [];
-      passes = (await env.DB.prepare('SELECT rowid AS id, site, uses, created FROM vpass WHERE created > ?1 ORDER BY created DESC LIMIT 20').bind(Date.now() - 14 * 864e5).all()).results || [];
+      passes = (await env.DB.prepare('SELECT rowid AS id, tok, site, uses, created FROM vpass WHERE created > ?1 ORDER BY created DESC LIMIT 20').bind(Date.now() - 14 * 864e5).all()).results || [];
+      puse = (await env.DB.prepare('SELECT pass, at, site, kind FROM vpassuse WHERE at > ?1 ORDER BY at').bind(Date.now() - 15 * 864e5).all()).results || [];
     }
     const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const KIND = { mistake: '🚩 Mistake', idea: '💡 Idea to improve', dislike: '👎 Doesn’t like', other: '💬 Message' };
@@ -383,7 +425,7 @@ async function visitsHook(request, env, ctx) {
 ${m.map(x => `<div class="b ${x.sender === 'owner' ? 'mine' : 'st'}"><div>${esc(x.msg).replace(/\n/g, '<br>')}</div><small>${x.sender === 'owner' ? 'You' : 'Student'} · ${when(x.created)}</small></div>`).join('')}
 ${isOpen ? (canReply ? `<form method="post" action="/__visits/reply" class="rf">${hid('k', k)}${hid('t', m[0].thread)}<div class="qr">${QUICK.map(q => `<button type="button" class="ghost" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div><textarea name="text" rows="2" required placeholder="Write a reply, or tap a ready answer above and edit it. The student sees it on the phone or computer they used."></textarea><button type="submit">Send reply</button></form>`
         : '<p class="small">Sent before replies existed, so the student can’t see a reply.</p>')
-        + `<form method="post" action="/__visits/done" class="df">${hid('k', k)}${hid('t', m[0].thread)}<button type="submit" class="ghost">✓ Done: move to finished</button></form>`
+        + `<div class="qr">${canReply ? `<form method="post" action="/__visits/solved" class="df">${hid('k', k)}${hid('t', m[0].thread)}<button type="submit">✅ Solved: thank them &amp; finish</button></form>` : ''}<form method="post" action="/__visits/done" class="df">${hid('k', k)}${hid('t', m[0].thread)}<button type="submit" class="ghost">✓ Done (no message)</button></form></div>`
         : `<form method="post" action="/__visits/done" class="df">${hid('k', k)}${hid('t', m[0].thread)}${hid('undo', '1')}<button type="submit" class="ghost">↩ Open again</button></form>`}</div>`;
     };
     const stud = chats.filter(x => x.sender === 'student');
@@ -400,7 +442,14 @@ ${isOpen ? (canReply ? `<form method="post" action="/__visits/reply" class="rf">
     }).filter(([, l]) => l.length);
     const useRows = Object.keys(VSITES).map(s => [s, uses.filter(u => u.site === s)]).filter(([, l]) => l.length);
     const np = (url.searchParams.get('newpass') || '').split(':');
-    const newLink = VSITES[np[0]] && /^[a-f0-9]{32}$/.test(np[1] || '') ? `https://${vHost(np[0])}/__show/${np[1]}` : '';
+    const newLink = (VSITES[np[0]] || VHUBS[np[0]]) && /^[a-f0-9]{32}$/.test(np[1] || '') ? `https://${vPassHost(np[0])}/__show/${np[1]}` : '';
+    // each go of a show link: when it was opened and the sites that visit went to (hub = "Hub")
+    const siteName = s => /^year\d$/.test(s) ? 'Hub' : (VSITES[s] || s);
+    const goes = tok => {
+      const ev = puse.filter(x => x.pass === tok); if (!ev.length) return '<small>not opened yet</small>';
+      const out = []; for (const x of ev) { if (x.kind === 'open' || !out.length) out.push({ at: x.at, sites: [siteName(x.site)] }); else if (!out[out.length - 1].sites.includes(siteName(x.site))) out[out.length - 1].sites.push(siteName(x.site)); }
+      return out.map((g, i) => `<b>Go ${i + 1}:</b> ${when(g.at)} · ${g.sites.map(esc).join(', ')}`).join('<br>');
+    };
     const used2 = d => devs.filter(x => x.day === d && (x.secs || 0) >= 120).length;
     const used = (d, s) => devs.filter(x => x.day === d && x.site === s && (x.secs || 0) >= 120).length;
     // no time yet: still in its first seconds (opened in the last 3 minutes), or opened and left at once (user 2026-10-20: the "–" looked like a fault)
@@ -445,10 +494,10 @@ ${fb.length ? `<div class="wrap"><table style="min-width:0"><tr><th>Site</th><th
 ${fb.filter(([, i, d]) => i.length || d.length).map(([s, i, d]) => `<details open><summary><b>${esc(VSITES[s])}</b></summary><ul>${[...i, ...d].sort((a, b) => b.id - a.id).slice(0, 15).map(x => `<li>${KIND[x.kind]}: “${esc(x.msg)}” <small>· ${when(x.created)}</small></li>`).join('')}</ul></details>`).join('')}` : '<p>None yet.</p>'}
 <h2 id="use">📊 What students use (last 7 days)</h2><p>How many times each part was opened, all devices together. No device numbers and no names: just totals. Your own devices are not counted.</p>
 ${useRows.length ? `<div class="wrap"><table style="min-width:0"><tr><th>Site</th><th style="text-align:left">Parts opened (most used first)</th></tr>${useRows.map(([s, l]) => `<tr><td>${esc(VSITES[s])}</td><td class="l">${l.slice(0, 14).map(u => `${esc(uname(u.part))} <b>${u.n}</b>`).join(' · ')}</td></tr>`).join('')}</table></div>` : '<p>Nothing yet: counting started on 21 Oct 2026.</p>'}
-<h2 id="show">👀 Show links</h2><p>A link for someone outside the class, for example a friend. It opens one site <b>twice only</b>, then stops (and after 14 days). While they use it, nothing is saved on their device, they are not counted, and the message buttons are hidden. The sites have no password, so it can’t stop someone who copies the normal web address.</p>
-<form method="post" action="/__visits/pass" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px">${hid('k', k)}<label for="ps">Site:</label><select id="ps" name="site">${Object.keys(VSITES).map(s => `<option value="${s}">${esc(VSITES[s])}</option>`).join('')}</select><button type="submit">Make a show link</button></form>
+<h2 id="show">👀 Show links</h2><p>A link for someone outside the class, for example a friend. It can be opened <b>twice only</b>, then it stops (and after 14 days). Choose a year group’s hub to show the hub page <b>and all its subject sites</b>: each go is one visit of about 6 hours, moving freely between them. While they use it, nothing is saved on their device, they are not counted, and the message buttons are hidden. Below you see when each go was opened and which sites were visited (the link page tells them you can see when it is opened). The sites have no password, so it can’t stop someone who copies a normal web address.</p>
+<form method="post" action="/__visits/pass" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px">${hid('k', k)}<label for="ps">Show:</label><select id="ps" name="site">${[...Object.keys(VHUBS), ...Object.keys(VSITES)].map(s => `<option value="${s}">${esc(vPassName(s))}</option>`).join('')}</select><button type="submit">Make a show link</button></form>
 ${newLink ? `<div class="newlink"><b>Your new show link</b> (it is shown only now):<br><span id="nl">${esc(newLink)}</span><br><button type="button" id="cp" style="margin-top:8px">Copy the link</button> <span id="cpd" class="small"></span></div>` : ''}
-${passes.length ? `<div class="wrap" style="margin-top:10px"><table style="min-width:0"><tr><th>Site</th><th>Made</th><th>Goes left</th><th></th></tr>${passes.map(p => `<tr><td>${esc(VSITES[p.site] || p.site)}</td><td>${when(p.created)}</td><td>${p.uses > 0 ? p.uses + ' of 2' : 'used up / stopped'}</td><td>${p.uses > 0 ? `<form method="post" action="/__visits/stop" style="margin:0">${hid('k', k)}${hid('id', p.id)}<button type="submit" class="ghost">Stop it</button></form>` : ''}</td></tr>`).join('')}</table></div>` : ''}
+${passes.length ? `<div class="wrap" style="margin-top:10px"><table style="min-width:0"><tr><th>Link for</th><th>Made</th><th>Goes left</th><th style="text-align:left">Opened (UAE time) and sites visited</th><th></th></tr>${passes.map(p => `<tr><td>${esc(vPassName(p.site))}</td><td>${when(p.created)}</td><td>${p.uses > 0 ? p.uses + ' of 2' : 'used up / stopped'}</td><td class="l">${goes(p.tok)}</td><td>${p.uses > 0 ? `<form method="post" action="/__visits/stop" style="margin:0">${hid('k', k)}${hid('id', p.id)}<button type="submit" class="ghost">Stop it</button></form>` : ''}</td></tr>`).join('')}</table></div>` : ''}
 <h2 id="visits">📈 Visits</h2>
 <div class="wrap"><table><tr><th>Day</th>${sites.map(s => `<th>${VSITES[s]}</th>`).join('')}<th>Day total</th></tr>
 ${days.length ? days.map(d => `<tr><td>${nice(d)}</td>${sites.map(s => cell(d, s)).join('')}<td><b>${sum(rows.filter(r => r.day === d))[0]}</b>${used2(d) ? `<small> · ${used2(d)} used</small>` : ''}</td></tr>`).join('') : `<tr><td colspan="${sites.length + 2}">No visits counted yet. Open any site, then refresh this page.</td></tr>`}

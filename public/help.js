@@ -15,6 +15,13 @@
     P.clear = function () { return this === L ? undefined : cl.call(this); };
     P.__guest = true;
   } catch (e) {}
+  // a guest visit from a hub show link continues on the other study sites: links to them go through /__guest/<visit>
+  if (GUEST) document.addEventListener('click', e => {
+    const a = e.target.closest && e.target.closest('a[href]'); if (!a) return;
+    let u, g = null; try { u = new URL(a.href, location.href); g = sessionStorage.getItem('gtok'); } catch (er) { return; }
+    if (!g || u.host === location.host || !/^year\d[\w-]*\.deirarevise\.workers\.dev$/.test(u.host)) return;
+    e.preventDefault(); location.href = 'https://' + u.host + '/__guest/' + g + '?to=' + encodeURIComponent(u.pathname + u.search + u.hash);
+  }, true);
   // the part of the site on screen, e.g. "exam", "topic", "revise" ("home" for the Home page): used for the usage totals and 👍/👎
   const partNow = () => location.hash.replace(/^#\/?/, '').split(/[/?]/)[0].toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 27) || 'home';
   const sget = k => { try { return sessionStorage.getItem(k); } catch (e) { return null; } };

@@ -31,6 +31,12 @@
   const PLAIN = !!(document.currentScript && document.currentScript.hasAttribute('data-plain'));
   // <script data-share src="help.js"> (IGCSE Edexcel Maths, the copy anyone may share): no "class only" wording (user 2026-10-19)
   const SHARE = !!(document.currentScript && document.currentScript.hasAttribute('data-share'));
+  // 🔑 class pass (hub-work/classpass_worker.js): this device gets its pass, or renews it, quietly about every 3 weeks
+  // (not in guest view, not on the IGCSE copy that anyone may share)
+  if (!GUEST && !SHARE && location.protocol === 'https:') try {
+    const t = +localStorage.getItem('vcp-at') || 0;
+    if (Date.now() - t > 20 * 864e5) fetch('/__class/claim', { method: 'POST', credentials: 'same-origin' }).then(r => { if (r.status === 204) localStorage.setItem('vcp-at', String(Date.now())); }).catch(() => {});
+  } catch (e) {}
   const shareText = h => !SHARE ? h : h
     .replace('It is not run by, approved by or connected to the school or its teachers.', 'It is not run by, approved by or connected to any school or exam board.')
     .replace(/Lesson materials, past-paper questions, textbook extracts and other resources <b>belong to their owners<\/b>\. .*?Please don't share them outside the class\./,
@@ -145,6 +151,7 @@ ${fixesHTML()}
     <li><b>If you own any material on this site and would like it changed or removed</b>, please tell the parent who shared the link, and it will be taken down promptly.</li>
     <li>Progress is saved on your device.<span class="needsync"> <b>Online saving is optional</b> and is turned on by a parent or guardian, who can delete it at any time. Online progress that isn't used for a year is deleted automatically.</span></li>
     <li>The number of visits is counted (by the site itself and with <b>Cloudflare Web Analytics</b>), with <b>no cookies</b> and nothing that identifies you (no names, no exact location).</li>
+    ${SHARE ? '' : '<li>One small <b>class pass</b> cookie keeps these sites for the class: a random number, with no names or personal details, not used for counting. A visitor with a show link gets one small cookie that keeps the link to their own device.</li>'}
     ${window.ASK_AI ? '<li>Answers from the <b>🤖 AI helper</b> are written by a computer and <b>can be wrong</b>. Questions and answers are not saved by this site.</li>' : ''}
     <li>Links to other websites are for help only. Those sites have their own rules.</li>
     <li>By using this site, students and parents accept these points.</li>

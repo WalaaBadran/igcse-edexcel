@@ -220,6 +220,7 @@ async function visitsTable(db) {
   await db.prepare('CREATE TABLE IF NOT EXISTS vuse (day TEXT, site TEXT, part TEXT, n INTEGER, PRIMARY KEY (day, site, part))').run();   // v6: parts used
   await db.prepare('CREATE TABLE IF NOT EXISTS vpass (tok TEXT PRIMARY KEY, site TEXT, uses INTEGER, created INTEGER)').run();   // v6: show links
   try { await db.prepare('ALTER TABLE vpass ADD COLUMN devh TEXT').run(); } catch (e) {}   // v9: the one device a show link works on
+  try { await db.prepare('ALTER TABLE vdev ADD COLUMN pass INTEGER').run(); } catch (e) {}   // v10: that device had the 🔑 class pass
   await db.prepare('CREATE TABLE IF NOT EXISTS vguest (tok TEXT PRIMARY KEY, scope TEXT, exp INTEGER)').run();   // v7: guest visits across sites
   try { await db.prepare('ALTER TABLE vguest ADD COLUMN pass TEXT').run(); } catch (e) {}
   await db.prepare('CREATE TABLE IF NOT EXISTS vgdev (g TEXT, site TEXT, devh TEXT, PRIMARY KEY (g, site))').run();   // v9: the device of each guest visit
@@ -279,6 +280,8 @@ const vTime = () => new Date(Date.now() + 4 * 3600e3).toISOString().slice(11, 16
 const vDay = (back = 0) => new Date(Date.now() + 4 * 3600e3 - back * 864e5).toISOString().slice(0, 10);   // UAE date
 async function visitsHook(request, env, ctx) {
   const url = new URL(request.url);
+  // 🔑 class pass (CLASSPASS block below): its own routes, and the lock when the owner turns it on; never blocks on an error
+  try { const c = await cpHook(request, env, url); if (c) return c; } catch (e) {}
   if (url.pathname === '/__visit' && request.method === 'POST') {
     const site = url.hostname.split('.')[0];
     if (!env.DB || !VSITES[site] || request.headers.get('sec-fetch-site') === 'cross-site') return new Response(null, { status: 204 });
@@ -310,6 +313,7 @@ async function visitsHook(request, env, ctx) {
       if (dev) {
         const r = await env.DB.prepare('INSERT OR IGNORE INTO vdev (day, site, dev, at, kind) VALUES (?1, ?2, ?3, ?4, ?5)').bind(day, site, (await vsha(day + ':' + site + ':' + dev)).slice(0, 32), vTime(), vKind(request.headers.get('user-agent') || '')).run();
         isNew = r.meta && r.meta.changes ? 1 : 0;
+        if (await cpHas(request, env.DB)) await env.DB.prepare('UPDATE vdev SET pass = 1 WHERE day = ?1 AND site = ?2 AND dev = ?3 AND pass IS NULL').bind(day, site, (await vsha(day + ':' + site + ':' + dev)).slice(0, 32)).run();
         if (isNew) await env.DB.prepare('DELETE FROM vdev WHERE day < ?1').bind(vDay(3)).run();
       }
       await env.DB.prepare('INSERT INTO visits (day, site, opens, devices) VALUES (?1, ?2, 1, ?3) ON CONFLICT (day, site) DO UPDATE SET opens = opens + 1, devices = devices + ?3').bind(day, site, isNew).run();
@@ -329,7 +333,7 @@ async function visitsHook(request, env, ctx) {
   }
   // 💬 owner actions from the private page (forms, so they work without any script): reply, finish a conversation,
   // make or stop a "show link"
-  if (/^\/__visits\/(reply|done|pass|stop|reopen|solved)$/.test(url.pathname) && request.method === 'POST') {
+  if (/^\/__visits\/(reply|done|pass|stop|reopen|solved|lockon|lockoff|joinnew)$/.test(url.pathname) && request.method === 'POST') {
     let f; try { f = await request.formData(); } catch (e) { return new Response('Bad request', { status: 400 }); }
     const k = String(f.get('k') || '');
     if (!env.DB || !(await vOwner(k))) return new Response('Not found', { status: 404, headers: { 'x-robots-tag': 'noindex' } });
@@ -361,6 +365,7 @@ async function visitsHook(request, env, ctx) {
       }
       back += '#show';
     }
+    if (op === 'lockon' || op === 'lockoff' || op === 'joinnew') { await cpOwnerSet(env.DB, op); back += '#classpass'; }   // 🔑 class pass
     if (op === 'stop' || op === 'reopen') {   // ⏹ stop a link, or ↩ give a stopped / used-up link one more go (user 2026-10-21); both are noted
       const id = Number(f.get('id')) || 0, row = await env.DB.prepare('SELECT tok, site FROM vpass WHERE rowid = ?').bind(id).first();
       if (row) {
@@ -480,6 +485,13 @@ async function visitsHook(request, env, ctx) {
       passes = (await env.DB.prepare('SELECT rowid AS id, tok, site, uses, created FROM vpass WHERE created > ?1 ORDER BY created DESC LIMIT 20').bind(Date.now() - 14 * 864e5).all()).results || [];
       puse = (await env.DB.prepare('SELECT pass, at, site, kind, part, secs FROM vpassuse WHERE at > ?1 ORDER BY at').bind(Date.now() - 15 * 864e5).all()).results || [];
     }
+    // 🔑 class pass: the lock, the class links, and how many recent devices already have the pass
+    let cpi = null, cpT = { n: 0, p: 0 }, cp3 = { n: 0, p: 0 };
+    if (env.DB) try {
+      cpi = await cpOwner(env.DB);
+      cpT = await env.DB.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(pass), 0) AS p FROM vdev WHERE site != 'igcse-edexcel' AND day = ?1").bind(vDay()).first() || cpT;
+      cp3 = await env.DB.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(pass), 0) AS p FROM vdev WHERE site != 'igcse-edexcel'").first() || cp3;
+    } catch (e) {}
     const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const KIND = { mistake: '🚩 Mistake', idea: '💡 Idea to improve', dislike: '👎 Doesn’t like', other: '💬 Message' };
     const when = ms => { const d = new Date(ms + 4 * 3600e3); return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }) + ' ' + d.toISOString().slice(11, 16); };
@@ -575,6 +587,13 @@ ${fb.length ? `<div class="wrap"><table style="min-width:0"><tr><th>Site</th><th
 ${fb.map(([s, i, d, mk, o]) => `<details${[...i, ...d, ...mk, ...o].some(x => !x.done) ? ' open' : ''}><summary><b>${esc(VSITES[s])}</b></summary><ul>${[...i, ...d, ...mk, ...o].sort((a, b) => b.id - a.id).slice(0, 20).map(x => `<li>${x.done ? '<small>finished</small>' : '<b style="color:#b42318">open</b>'} · ${KIND[x.kind] || KIND.other}: “${esc(x.msg)}” <small>· page: ${esc(x.page || 'Home')} · ${when(x.created)}</small></li>`).join('')}</ul></details>`).join('')}` : '<p>None yet.</p>'}
 <h2 id="use">📊 What students use (last 7 days)</h2><p>How many times each part was opened, all devices together. No device numbers and no names: just totals. Your own devices are not counted.</p>
 ${useRows.length ? `<div class="wrap"><table style="min-width:0"><tr><th>Site</th><th style="text-align:left">Parts opened (most used first)</th></tr>${useRows.map(([s, l]) => `<tr><td>${esc(VSITES[s])}</td><td class="l">${l.slice(0, 14).map(u => `${esc(uname(u.part))} <b>${u.n}</b>`).join(' · ')}</td></tr>`).join('')}</table></div>` : '<p>Nothing yet: counting started on 21 Oct 2026.</p>'}
+${cpi ? `<h2 id="classpass">🔑 Class pass (no password)</h2><p>Every phone, tablet or computer that uses the sites gets a <b>class pass</b> on its own: nothing to type, no names, nothing for the students to do. When the lock is on, the sites open <b>only on devices with the pass</b>, so a site’s name written down and given to someone else does not open. Show links work as before.</p>
+<p>Devices that already have the pass: today <b>${cpT.p} of ${cpT.n}</b>, last 3 days <b>${cp3.p} of ${cp3.n}</b> (each site and day counted once; a device gets it on its first visit, so it shows from its next visit). Turn the lock on when this is close to all of them, for example after a week.</p>
+${cpi.lock ? `<p>🔒 <b>The lock is ON</b> (since ${when(cpi.lock)}). A device without the pass gets it on its own if it has used that site before (until ${when(cpi.lock + 14 * 864e5).slice(0, -6)}), or if it has the pass on another of the study sites. Any other device sees “This site is for one class” and needs the class link once.</p><form method="post" action="/__visits/lockoff" style="margin:0 0 10px">${hid('k', k)}<button type="submit" class="ghost">🔓 Turn the lock off (everything opens again at once)</button></form>`
+  : `<p>🔓 <b>The lock is off</b>: anyone who has a site’s address can open it.</p><form method="post" action="/__visits/lockon" style="margin:0 0 10px">${hid('k', k)}<button type="submit">🔒 Turn the lock on</button></form>`}
+<p><b>Class links</b> for a new phone, tablet or computer: one tap, no password. Send them only in the class group.</p>
+<p>Year 9: <span id="j9">${esc(cpi.join9)}</span> <button type="button" class="ghost" data-copy="j9">Copy</button><br>Year 8: <span id="j8">${esc(cpi.join8)}</span> <button type="button" class="ghost" data-copy="j8">Copy</button> <span id="jd" class="small"></span></p>
+<form method="post" action="/__visits/joinnew" style="margin:0 0 10px">${hid('k', k)}<button type="submit" class="ghost">Make new class links</button> <span class="small">the old class links stop working; devices that have the pass keep it</span></form>` : ''}
 <h2 id="show">👀 Show links</h2><p>A link for someone outside the class, for example a friend, <b>to show them, not to share</b>. It works <b>only on the first device that opens it</b> (a forwarded copy will not open), it can be opened <b>twice only</b>, then it stops (and after 14 days). Choose a year group’s hub to show the hub page <b>and all its subject sites</b>: each go is one visit of about 6 hours, moving freely between them. While they use it, nothing is saved on their device, they are not counted, and the message buttons are hidden. Below you see, for each go: when it was opened, about how long it lasted on the subject sites, and the pages looked at on each site (the link page tells them you can see this). While they look, the address bar shows a private guest address that works only on their device and stops when the visit ends. <b>Don’t press “Open” yourself to test a link</b>: the first device that presses it is the only one it will work on. (Students use the sites without a password, so someone who deliberately writes down a site’s name could still open it.)</p>
 <form method="post" action="/__visits/pass" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px">${hid('k', k)}<label for="ps">Show:</label><select id="ps" name="site">${[...Object.keys(VHUBS), ...Object.keys(VSITES)].map(s => `<option value="${s}">${esc(vPassName(s))}</option>`).join('')}</select><button type="submit">Make a show link</button></form>
 ${newLink ? `<div class="newlink"><b>Your new show link</b> (it is shown only now):<br><span id="nl">${esc(newLink)}</span><br><button type="button" id="cp" style="margin-top:8px">Copy the link</button> <span id="cpd" class="small"></span></div>` : ''}
@@ -597,6 +616,11 @@ ${devs.length ? devs.map(r => `<tr><td>${nice(r.day)}</td><td>${VSITES[r.site] |
     var b = e.target.closest && e.target.closest('[data-q]'); if (!b) return;
     var ta = b.closest('form').querySelector('textarea'); ta.value = b.getAttribute('data-q'); ta.focus();
   });
+  document.addEventListener('click', function (e) {   // 🔑 copy a class link
+    var b = e.target.closest && e.target.closest('[data-copy]'); if (!b) return;
+    var t = document.getElementById(b.getAttribute('data-copy')).textContent, d = document.getElementById('jd');
+    try { navigator.clipboard.writeText(t).then(function () { d.textContent = 'Copied'; }, function () { d.textContent = 'Select the link and copy it'; }); } catch (er) { d.textContent = 'Select the link and copy it'; }
+  });
   var cp = document.getElementById('cp');
   if (cp) cp.onclick = function () {
     var t = document.getElementById('nl').textContent, d = document.getElementById('cpd');
@@ -607,6 +631,134 @@ ${devs.length ? devs.map(r => `<tr><td>${nice(r.day)}</td><td>${VSITES[r.site] |
   }
   return null;
 }
+// CLASSPASS start (hub-work/classpass_worker.js: in every subject site's Worker through add_visits.py, and in both year hubs
+// through make_year_pages.py)
+// 🔑 Class pass, no password (user 2026-10-21: "find solution without password"). The sites recognise the class's own phones,
+// tablets and computers. Every device that uses a site gets a class pass on its own (help.js / year.js ask quietly): one small
+// cookie, a random number with a signature, kept 400 days and renewed; no personal data, never used for counting.
+// While the owner's lock is OFF (the start) nothing changes for anyone. When the owner turns it ON (private page), a page on a
+// plain address opens only on a device with the pass. A device without it is checked automatically, with nothing to type:
+//   1. for 14 days after the lock goes on, a device that has used this site before (study data in this browser) gets the pass;
+//   2. the other study sites are asked in turn whether this device has the pass there (quick redirects; a signed ticket
+//      that lasts 2 minutes comes back and this site gives the pass too);
+//   3. otherwise: "This site is for one class", and the class link (/join/<code> on the year page, shown on the owner's page)
+//      gives the pass with one tap.
+// Show-link visits (/__show/, /__guest/, /__g/) keep their own one-device rules. The IGCSE copy stays open to everyone.
+const CP_RING = ['year9', 'year8', 'year9-english', 'year9-science', 'year9-math', 'year9-geography', 'year9-history',
+  'year8-english', 'year8-science', 'year8-math', 'year8-geography', 'year8-history'].map(s => s + '.deirarevise.workers.dev');
+const CP_HUBS = { 'year9.deirarevise.workers.dev': 'year9', 'year8.deirarevise.workers.dev': 'year8' };
+const CP_GRACE = 14 * 864e5;
+let cpReady = false, cpKey = null, cpLockAt = 0, cpLockRead = 0;
+const cpRand = () => (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g, '').slice(0, 32);
+async function cpSetup(db) {
+  if (cpReady) return;
+  await db.prepare('CREATE TABLE IF NOT EXISTS vkeys (name TEXT PRIMARY KEY, val TEXT)').run();
+  await db.prepare("INSERT OR IGNORE INTO vkeys (name, val) VALUES ('cp-secret', ?1)").bind(cpRand() + cpRand()).run();
+  await db.prepare("INSERT OR IGNORE INTO vkeys (name, val) VALUES ('cp-lock', '0')").run();
+  for (const y of ['year9', 'year8']) await db.prepare('INSERT OR IGNORE INTO vkeys (name, val) VALUES (?1, ?2)').bind('cp-join-' + y, cpRand().slice(0, 12)).run();
+  cpReady = true;
+}
+async function cpSign(db, text) {   // HMAC with the secret kept in the shared database (never in a repo)
+  if (!cpKey) {
+    await cpSetup(db); const r = await db.prepare("SELECT val FROM vkeys WHERE name = 'cp-secret'").first();
+    cpKey = await crypto.subtle.importKey('raw', new TextEncoder().encode(r.val), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  }
+  return [...new Uint8Array(await crypto.subtle.sign('HMAC', cpKey, new TextEncoder().encode(text)))].map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
+}
+async function cpLock(db, fresh) {   // 0 = lock off, otherwise when it was turned on (read again at most once a minute)
+  if (fresh || Date.now() - cpLockRead > 60e3) {
+    await cpSetup(db); const r = await db.prepare("SELECT val FROM vkeys WHERE name = 'cp-lock'").first();
+    cpLockAt = +(r && r.val) || 0; cpLockRead = Date.now();
+  }
+  return cpLockAt;
+}
+const cpCookie = request => (request.headers.get('cookie') || '').match(/(?:^|;\s*)vcp=([a-f0-9]{32})\.([a-f0-9]{32})/) || [];
+async function cpHas(request, db) { const m = cpCookie(request); return !!(m[1] && (await cpSign(db, 'pass|' + m[1])) === m[2]); }
+async function cpNew(db, keep) { const id = keep || cpRand(); return `vcp=${id}.${await cpSign(db, 'pass|' + id)}; Path=/; Max-Age=34560000; HttpOnly; Secure; SameSite=Lax`; }
+const cpPage = (title, body, status) => new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${title}</title><style>body{margin:0 auto;padding:24px 16px;font:17px/1.5 system-ui,sans-serif;background:#f4f6fb;color:#1d2433;max-width:560px}@media (prefers-color-scheme:dark){body{background:#12151c;color:#e8ecf3}}h1{font-size:24px}</style></head><body>${body}</body></html>`,
+  { status: status || 200, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-robots-tag': 'noindex, nofollow', 'referrer-policy': 'no-referrer', 'x-frame-options': 'DENY' } });
+const CP_ONE_CLASS = '<h1>🔒 This site is for one class</h1><p>These revision sites were made by a parent for one class, so they open only on the class’s own phones, tablets and computers.</p>'
+  + '<p><b>In the class?</b> Open the <b>class link</b> from your class group once on this device. There is no password.</p>'
+  + '<p><b>Someone sent you a show link?</b> Please open that link again.</p>';
+async function cpHook(request, env, url) {
+  const host = url.hostname, p = url.pathname;
+  if (!env.DB || !CP_RING.includes(host)) return null;   // the IGCSE copy (and local copies) stay open
+  const db = env.DB;
+  // 1. quietly from help.js / year.js: this device gets its pass, or has it renewed
+  if (p === '/__class/claim' && request.method === 'POST') {
+    if (request.headers.get('sec-fetch-site') === 'cross-site') return new Response(null, { status: 403 });
+    const m = cpCookie(request), ok = !!(m[1] && (await cpSign(db, 'pass|' + m[1])) === m[2]), lock = await cpLock(db);
+    if (!ok && lock && Date.now() > lock + CP_GRACE) return new Response(null, { status: 403, headers: { 'cache-control': 'no-store' } });
+    return new Response(null, { status: 204, headers: { 'cache-control': 'no-store', 'set-cookie': await cpNew(db, ok ? m[1] : '') } });
+  }
+  // 2. the class link on the year page: /join/<code>
+  const jm = p.match(/^\/join\/([a-z0-9]{12})$/);
+  if (jm && CP_HUBS[host]) {
+    await cpSetup(db); const r = await db.prepare('SELECT val FROM vkeys WHERE name = ?1').bind('cp-join-' + CP_HUBS[host]).first();
+    if (!(r && r.val === jm[1])) return cpPage('Class link', '<h1>This class link has changed</h1><p>Please ask for the new class link in your class group.</p>', 404);
+    const m = cpCookie(request), ok = !!(m[1] && (await cpSign(db, 'pass|' + m[1])) === m[2]);
+    return new Response(null, { status: 302, headers: { location: '/', 'cache-control': 'no-store', 'set-cookie': await cpNew(db, ok ? m[1] : '') } });
+  }
+  // 3. another study site asks: does this device have the pass here? Yes: a ticket goes back. No: ask the next site.
+  if (p === '/__class/vouch' && request.method === 'GET') {
+    let to = null; try { to = new URL(url.searchParams.get('to') || ''); } catch (e) {}
+    if (!to || to.protocol !== 'https:' || !CP_RING.includes(to.hostname)) return cpPage('Not found', '<p>Not found.</p>', 404);
+    const back = to.pathname + to.search + to.hash;
+    if (await cpHas(request, db)) {
+      const exp = Date.now() + 120e3;
+      return Response.redirect(`https://${to.hostname}/__class/in?t=${exp}.${await cpSign(db, 'in|' + to.hostname + '|' + exp)}&to=${encodeURIComponent(back)}`, 302);
+    }
+    let i = (+url.searchParams.get('n') || 0) + 1;
+    while (i < CP_RING.length && CP_RING[i] === to.hostname) i++;
+    if (i < CP_RING.length) return Response.redirect(`https://${CP_RING[i]}/__class/vouch?n=${i}&to=${encodeURIComponent(to.href)}`, 302);
+    return Response.redirect(`https://${to.hostname}/__class/none?to=${encodeURIComponent(back)}`, 302);
+  }
+  // 4. back with a ticket: this site gives the pass too, then opens the page
+  if (p === '/__class/in' && request.method === 'GET') {
+    const [exp, sig] = String(url.searchParams.get('t') || '').split('.'), to = url.searchParams.get('to') || '/', safe = /^\/(?!\/)/.test(to) ? to : '/';
+    if (!(+exp > Date.now() && +exp < Date.now() + 300e3 && sig === await cpSign(db, 'in|' + host + '|' + exp)))
+      return Response.redirect(`https://${host}/__class/none?to=${encodeURIComponent(safe)}`, 302);
+    return new Response(null, { status: 302, headers: { location: safe, 'cache-control': 'no-store', 'set-cookie': await cpNew(db, '') } });
+  }
+  // 5. no pass anywhere
+  if (p === '/__class/none') {
+    const to = url.searchParams.get('to') || '/';
+    if (!(await cpLock(db))) return Response.redirect(`https://${host}${/^\/(?!\/)/.test(to) ? to : '/'}`, 302);
+    return cpPage('For one class', CP_ONE_CLASS, 403);
+  }
+  // 6. the lock: a page on a plain address needs the pass (files, messages and show links are not pages here)
+  const dest = request.headers.get('sec-fetch-dest');
+  const page = ['GET', 'HEAD'].includes(request.method) && (dest === 'document' || dest === 'iframe' || p === '/' || /\.(html?|pdf)$/i.test(p));
+  if (!page || p.startsWith('/__') || p.startsWith('/api/')) return null;
+  const lock = await cpLock(db);
+  if (!lock || await cpHas(request, db)) return null;
+  const claim = Date.now() < lock + CP_GRACE, start = CP_RING[0] === host ? 1 : 0;
+  // a short page that does steps 1 and 2 (no loops: one try a minute in this tab), else the "one class" message
+  return cpPage('Opening…', `<div id="m"><p>Opening…</p></div><noscript>${CP_ONE_CLASS}</noscript><script>(async () => {
+  const none = () => location.replace('/__class/none?to=' + encodeURIComponent(location.pathname + location.search + location.hash));
+  try {
+    const last = +sessionStorage.getItem('cp-try') || 0; if (Date.now() - last < 60e3) return none();
+    sessionStorage.setItem('cp-try', String(Date.now()));
+    let used = false; try { used = localStorage.length > 0 && sessionStorage.getItem('guest') !== '1'; } catch (e) {}
+    if (used && ${claim}) { const r = await fetch('/__class/claim', { method: 'POST', credentials: 'same-origin' }); if (r.status === 204) { location.reload(); return; } }
+    location.replace('https://${CP_RING[start]}/__class/vouch?n=${start}&to=' + encodeURIComponent(location.href));
+  } catch (e) { none(); }
+})();</script>`, 403);
+}
+// for the owner's page: the lock, the class links, and how many devices already have the pass
+async function cpOwner(db) {
+  await cpSetup(db); const rows = (await db.prepare("SELECT name, val FROM vkeys WHERE name LIKE 'cp-%' AND name != 'cp-secret'").all()).results || [];
+  const v = Object.fromEntries(rows.map(r => [r.name, r.val]));
+  return { lock: +v['cp-lock'] || 0, join9: `https://year9.deirarevise.workers.dev/join/${v['cp-join-year9']}`, join8: `https://year8.deirarevise.workers.dev/join/${v['cp-join-year8']}` };
+}
+async function cpOwnerSet(db, op) {
+  await cpSetup(db);
+  if (op === 'lockon') await db.prepare("UPDATE vkeys SET val = ?1 WHERE name = 'cp-lock'").bind(String(Date.now())).run();
+  if (op === 'lockoff') await db.prepare("UPDATE vkeys SET val = '0' WHERE name = 'cp-lock'").run();
+  if (op === 'joinnew') for (const y of ['year9', 'year8']) await db.prepare('UPDATE vkeys SET val = ?1 WHERE name = ?2').bind(cpRand().slice(0, 12), 'cp-join-' + y).run();
+  await cpLock(db, true);
+}
+// CLASSPASS end
 // VISITS end
 
 export default {

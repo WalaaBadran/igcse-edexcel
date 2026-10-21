@@ -210,14 +210,28 @@ ${fixesHTML()}
     ta.focus();
   }
   // a new reply? checked when a page opens (at most every 2 minutes); shown on the 💬 button and at the top of the page
+  // replies appear without refreshing (user 2026-10-21: "make the reply appear instantly if i solved instantly"): checked when a
+  // page opens, every 10 s while the 💬 panel is open (the reply is added to the conversation), every 30 s while the page is on
+  // screen, and at once when the student comes back to the tab. Only devices that have sent a message check.
+  let lastSeenTop = 0;
   function checkReplies() {
     const t = chatId(false); if (GUEST || !t) return;
-    if (Date.now() - (+sget('chat-check') || 0) < 120000) { newReplies = +(sget('chat-new') || 0); paintReplies(); return; }
-    sset('chat-check', String(Date.now()));
     fetch('/api/chat?t=' + encodeURIComponent(t)).then(r => r.json()).then(j => {
+      const msgs = j.msgs || [], log = document.querySelector('#app > .flagbar .flagpanel .chatlog');
+      const top = Math.max(0, ...msgs.map(m => m.id));
+      if (log) { if (top !== lastSeenTop) chatLog(log, msgs); lastSeenTop = top; return; }   // panel open: show it in the conversation
       const read = +(get('chat-read') || 0);
-      newReplies = (j.msgs || []).filter(m => m.from === 'owner' && m.id > read).length; sset('chat-new', String(newReplies)); paintReplies();
+      newReplies = msgs.filter(m => m.from === 'owner' && m.id > read).length; sset('chat-new', String(newReplies)); paintReplies();
     }).catch(() => {});
+  }
+  if (!GUEST) {
+    let tick = 0;
+    setInterval(() => {
+      if (document.visibilityState !== 'visible' || !chatId(false)) return;
+      tick++;
+      if (document.querySelector('#app > .flagbar .flagpanel .chatlog') || tick % 3 === 0) checkReplies();
+    }, 10000);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkReplies(); });
   }
   function paintReplies() {
     const app = document.getElementById('app'); if (!app) return;

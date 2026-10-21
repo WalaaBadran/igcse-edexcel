@@ -268,10 +268,10 @@ ${fixesHTML()}
   }
   if (!GUEST) {
     let tick = 0;
-    setInterval(() => {   // every 5 s while the chat is open or for 10 minutes after sending, otherwise every 30 s
+    setInterval(() => {   // every 5 s while the chat is open or for 10 minutes after sending, otherwise every 60 s
       if (document.visibilityState !== 'visible' || !chatId(false)) return;
       tick++;
-      if (document.querySelector('body > .chatside') || Date.now() < hotUntil || tick % 6 === 0) checkReplies();
+      if (document.querySelector('body > .chatside') || Date.now() < hotUntil || tick % 12 === 0) checkReplies();
     }, 5000);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkReplies(); });
   }
@@ -579,7 +579,8 @@ html:not(.sync-on) .needsync { display: none !important; }`;
   const atHome = () => /^#?\/?$/.test(location.hash);
   const go = () => { try { sessionStorage.setItem('site-updated', '1'); } catch (e) {} location.reload(); };
   async function check() {
-    if (ready || Date.now() - last < 50000) return; last = Date.now();
+    // only while the page is on screen, at most every 10 minutes (each check is a request; the daily free limit is 100,000)
+    if (ready || document.visibilityState !== 'visible' || Date.now() - last < 600000) return; last = Date.now();
     try {
       const r = await fetch(location.pathname + '?u=' + Date.now(), { cache: 'no-store', credentials: 'same-origin' });
       if (!r.ok) return;

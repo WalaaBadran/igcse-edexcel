@@ -122,36 +122,76 @@ async function syncApi(request, env, url) {
   return syncJson({ error: 'Not found' }, 404);
 }
 // SYNC end
-// FLAGS: 🚩 Flag a mistake (help.js) sends the student's note here with one tap (user, 2026-10-19: "send automatically").
-// Flags wait in the shared database until the parent's daily check reads them (audit-team/site_audit.py). Reading needs a key
-// kept only on the parent's computer; only its SHA-256 is here. No names or personal details are asked for.
+// FLAGS: 💬 Messages to the parent who made the sites, like a chat (user 2026-10-21: "i don't want flags to whatsapp or email,
+// i want it like chat to my private admin page"; "suggestions to improve and what they don't like about each site").
+// help.js sends 🚩 mistakes, 💡 ideas and 👎 dislikes here; they appear at once on the owner's private page (/__visits?k=…),
+// where the parent can reply. A reply shows only on the device that sent the message: that device keeps a random
+// conversation number in its own browser storage. No names, accounts, e-mails or phone numbers. (hub-work/chat_worker.js,
+// inserted by hub-work/add_chat.py; it replaced the older flags-only block and kept its key for audit-team/check_flags.py.)
 const FLAG_KEY_HASH = 'a0eb9a84d213e5cf0ebe1aa4249164074d84be882ecc1c3e7d6a14737285bc85';
 const flagClean = (x, n) => String(x == null ? '' : x).replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, ' ').slice(0, n);
-async function flagApi(request, env, url) {
+const CHAT_KINDS = ['mistake', 'idea', 'dislike', 'other'];
+let chatReady = false;
+async function chatSetup(db) {
+  if (chatReady) return;
+  await db.prepare('CREATE TABLE IF NOT EXISTS chat (id INTEGER PRIMARY KEY AUTOINCREMENT, thread TEXT, site TEXT, sender TEXT, kind TEXT, page TEXT, url TEXT, msg TEXT, created INTEGER, done INTEGER DEFAULT 0)').run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS chat_thread ON chat (thread)').run();
+  try {   // the older "Flag a mistake" messages become conversations too (once)
+    await db.prepare("INSERT INTO chat (thread, site, sender, kind, page, url, msg, created, done) SELECT 'flag-' || id, site, 'student', 'mistake', page, url, msg, created, done FROM flags WHERE NOT EXISTS (SELECT 1 FROM chat WHERE chat.thread = 'flag-' || flags.id)").run();
+  } catch (e) {}
+  chatReady = true;
+}
+const chatThread = t => /^[A-Za-z0-9-]{16,64}$/.test(String(t || '')) ? String(t) : '';
+async function chatAdd(request, env, url, body, thread) {
+  const db = env.DB, now = Date.now();
+  const ip = await syncHash('ip:' + (request.headers.get('cf-connecting-ip') || '') + ':' + new Date(now).toISOString().slice(0, 10));
+  if (request.headers.get('origin') !== url.origin) return syncJson({ error: 'Please use this site.' }, 403);
+  if (await syncCount(db, 'flag:' + ip, now, 20)) return syncJson({ error: 'Thank you! You have sent a lot just now. Please wait 15 minutes.' }, 429);
+  const msg = flagClean(body.text, 1000).trim();
+  if (msg.length < 2) return syncJson({ error: 'Please type your message first.' }, 400);
+  await syncBump(db, 'flag:' + ip, now);
+  const kind = CHAT_KINDS.includes(body.kind) ? body.kind : 'other';
+  await db.prepare('INSERT INTO chat (thread, site, sender, kind, page, url, msg, created) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    .bind(thread, url.hostname.split('.')[0], 'student', kind, flagClean(body.page, 200), flagClean(body.url, 300), msg, now).run();
+  await db.prepare('UPDATE chat SET done = 0 WHERE thread = ?').bind(thread).run();   // a new message reopens the conversation
+  return null;
+}
+const chatList = async (db, thread) => ((await db.prepare('SELECT id, sender, kind, msg, created FROM chat WHERE thread = ? ORDER BY id LIMIT 200').bind(thread).all()).results || [])
+  .map(r => ({ id: r.id, from: r.sender === 'owner' ? 'owner' : 'me', kind: r.kind, msg: r.msg, at: r.created }));
+async function chatApi(request, env, url) {   // /api/chat: send a message, or read this device's conversation
+  if (!env.DB) return syncJson({ error: 'Sending is not set up yet.' }, 503);
+  await syncSetup(env.DB); await chatSetup(env.DB);
+  if (request.method === 'GET') {
+    const t = chatThread(url.searchParams.get('t'));
+    return t ? syncJson({ msgs: await chatList(env.DB, t) }) : syncJson({ msgs: [] });
+  }
+  if (request.method !== 'POST') return syncJson({ error: 'Method not allowed' }, 405);
+  let body;
+  try { const t = await request.text(); if (t.length > 6000) return syncJson({ error: 'That is too long.' }, 413); body = JSON.parse(t) || {}; }
+  catch (e) { return syncJson({ error: 'Bad request' }, 400); }
+  const thread = chatThread(body.t);
+  if (!thread) return syncJson({ error: 'Bad request' }, 400);
+  const bad = await chatAdd(request, env, url, body, thread); if (bad) return bad;
+  return syncJson({ ok: true, msgs: await chatList(env.DB, thread) });
+}
+async function flagApi(request, env, url) {   // the older 🚩 button (pages still cached on phones) + the daily check's list
   if (!env.DB) return syncJson({ error: 'Sending is not set up yet.' }, 503);
   if (request.method !== 'POST') return syncJson({ error: 'Method not allowed' }, 405);
   let body;
   try { const t = await request.text(); if (t.length > 6000) return syncJson({ error: 'That is too long.' }, 413); body = JSON.parse(t) || {}; }
   catch (e) { return syncJson({ error: 'Bad request' }, 400); }
   const db = env.DB, now = Date.now(), op = url.pathname.replace(/^\/api\/flag\/?/, '');
-  await syncSetup(db);
-  await db.prepare('CREATE TABLE IF NOT EXISTS flags (id INTEGER PRIMARY KEY AUTOINCREMENT, site TEXT, page TEXT, url TEXT, msg TEXT, created INTEGER, done INTEGER DEFAULT 0)').run();
-  const ip = await syncHash('ip:' + (request.headers.get('cf-connecting-ip') || '') + ':' + new Date(now).toISOString().slice(0, 10));
+  await syncSetup(db); await chatSetup(db);
   if (op === '') {
-    if (request.headers.get('origin') !== url.origin) return syncJson({ error: 'Please use this site.' }, 403);
-    if (await syncCount(db, 'flag:' + ip, now, 20)) return syncJson({ error: 'Thank you! You have sent a lot just now. Please wait 15 minutes.' }, 429);
-    const msg = flagClean(body.text, 1000).trim();
-    if (msg.length < 2) return syncJson({ error: 'Please type what is wrong first.' }, 400);
-    await syncBump(db, 'flag:' + ip, now);
-    await db.prepare('INSERT INTO flags (site, page, url, msg, created) VALUES (?, ?, ?, ?, ?)')
-      .bind(url.hostname.split('.')[0], flagClean(body.page, 200), flagClean(body.url, 300), msg, now).run();
+    const bad = await chatAdd(request, env, url, { ...body, kind: 'mistake' }, 'flag-' + crypto.randomUUID()); if (bad) return bad;
     return syncJson({ ok: true });
   }
-  if (op === 'list' || op === 'done') {
+  if (op === 'list' || op === 'done') {   // audit-team/check_flags.py (key kept only on the parent's computer)
+    const ip = await syncHash('ip:' + (request.headers.get('cf-connecting-ip') || '') + ':' + new Date(now).toISOString().slice(0, 10));
     if (await syncCount(db, 'flagkey:' + ip, now, 5)) return syncJson({ error: 'Too many tries. Please wait 15 minutes.' }, 429);
     if (await syncHash('flags:' + String(body.key || '')) !== FLAG_KEY_HASH) { await syncBump(db, 'flagkey:' + ip, now); return syncJson({ error: 'Not allowed' }, 403); }
-    if (op === 'done') { await db.prepare('UPDATE flags SET done = 1 WHERE id = ?').bind(Number(body.id) || 0).run(); return syncJson({ ok: true }); }
-    const r = await db.prepare('SELECT id, site, page, url, msg, created, done FROM flags WHERE id > ? ORDER BY id LIMIT 500').bind(Number(body.after) || 0).all();
+    if (op === 'done') { await db.prepare('UPDATE chat SET done = 1 WHERE thread = (SELECT thread FROM chat WHERE id = ?)').bind(Number(body.id) || 0).run(); return syncJson({ ok: true }); }
+    const r = await db.prepare("SELECT id, site, kind, page, url, msg, created, done FROM chat WHERE sender = 'student' AND id > ? ORDER BY id LIMIT 500").bind(Number(body.after) || 0).all();
     return syncJson({ flags: r.results || [] });
   }
   return syncJson({ error: 'Not found' }, 404);
@@ -177,6 +217,8 @@ async function visitsTable(db) {
   await db.prepare('CREATE TABLE IF NOT EXISTS vdev (day TEXT, site TEXT, dev TEXT, PRIMARY KEY (day, site, dev))').run();
   for (const c of ['at', 'kind']) { try { await db.prepare(`ALTER TABLE vdev ADD COLUMN ${c} TEXT`).run(); } catch (e) {} }   // added in v3
   for (const c of ['secs', 'pages']) { try { await db.prepare(`ALTER TABLE vdev ADD COLUMN ${c} INTEGER`).run(); } catch (e) {} }   // added in v5
+  await db.prepare('CREATE TABLE IF NOT EXISTS vuse (day TEXT, site TEXT, part TEXT, n INTEGER, PRIMARY KEY (day, site, part))').run();   // v6: parts used
+  await db.prepare('CREATE TABLE IF NOT EXISTS vpass (tok TEXT PRIMARY KEY, site TEXT, uses INTEGER, created INTEGER)').run();   // v6: show links
   visitsReady = true;
 }
 // where each site lives: all on deirarevise.workers.dev, except IGCSE Edexcel Maths on its own pages.dev link (user 2026-10-19:
@@ -200,6 +242,17 @@ async function visitsHook(request, env, ctx) {
     const site = url.hostname.split('.')[0];
     if (!env.DB || !VSITES[site] || request.headers.get('sec-fetch-site') === 'cross-site') return new Response(null, { status: 204 });
     const dev = (url.searchParams.get('d') || '').slice(0, 64), day = vDay();
+    if (url.searchParams.has('use')) {   // 📊 which parts were opened (user 2026-10-21: "without knowing the persons can i know how they are using it"):
+      // only totals per day, site and part (e.g. "exam:3,topic:5,tool-ask:1"), never a device number
+      const parts = String(url.searchParams.get('use') || '').split(',').slice(0, 25).map(x => x.split(':'))
+        .filter(([p, n]) => /^[a-z0-9-]{1,30}$/.test(p || '') && +n > 0).map(([p, n]) => [p, Math.min(+n, 100)]);
+      if (parts.length) {
+        const job = (async () => { await visitsTable(env.DB);
+          await env.DB.batch(parts.map(([p, n]) => env.DB.prepare('INSERT INTO vuse (day, site, part, n) VALUES (?1, ?2, ?3, ?4) ON CONFLICT (day, site, part) DO UPDATE SET n = n + ?4').bind(day, site, p, n))); })().catch(() => {});
+        if (ctx && ctx.waitUntil) ctx.waitUntil(job); else await job;
+      }
+      return new Response(null, { status: 204, headers: { 'cache-control': 'no-store' } });
+    }
     if (url.searchParams.get('u') === '1') {   // ⏱ time used and pages opened, added to today's row for this device
       const t = Math.min(Math.max(+url.searchParams.get('t') || 0, 0), 3600), pg = Math.min(Math.max(+url.searchParams.get('p') || 0, 0), 500);
       if (dev && (t || pg)) {
@@ -233,6 +286,61 @@ async function visitsHook(request, env, ctx) {
 <script>try { localStorage.setItem('vown', '1'); } catch (e) {} location.replace(${JSON.stringify(next)});</script>`,
       { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-robots-tag': 'noindex, nofollow', 'referrer-policy': 'no-referrer' } });
   }
+  // 💬 owner actions from the private page (forms, so they work without any script): reply, finish a conversation,
+  // make or stop a "show link"
+  if (/^\/__visits\/(reply|done|pass|stop)$/.test(url.pathname) && request.method === 'POST') {
+    let f; try { f = await request.formData(); } catch (e) { return new Response('Bad request', { status: 400 }); }
+    const k = String(f.get('k') || '');
+    if (!env.DB || !(await vOwner(k))) return new Response('Not found', { status: 404, headers: { 'x-robots-tag': 'noindex' } });
+    await visitsTable(env.DB); await chatSetup(env.DB);
+    const op = url.pathname.split('/')[2], t = String(f.get('t') || '').slice(0, 80);
+    let back = `/__visits?k=${encodeURIComponent(k)}&done=1`;
+    if (op === 'reply') {
+      const text = flagClean(f.get('text'), 2000).trim();
+      const s = t && text ? await env.DB.prepare('SELECT site FROM chat WHERE thread = ? LIMIT 1').bind(t).first() : null;
+      if (s) await env.DB.prepare("INSERT INTO chat (thread, site, sender, kind, page, url, msg, created, done) VALUES (?, ?, 'owner', 'reply', '', '', ?, ?, 0)").bind(t, s.site, text, Date.now()).run();
+      back += '#msgs';
+    }
+    if (op === 'done') { await env.DB.prepare('UPDATE chat SET done = ? WHERE thread = ?').bind(f.get('undo') ? 0 : 1, t).run(); back += '#msgs'; }
+    if (op === 'pass') {   // 👀 a link for someone outside the class: opens twice, then stops (user 2026-10-21)
+      const ps = String(f.get('site') || '');
+      if (VSITES[ps]) {
+        const tok = (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g, '').slice(0, 32);
+        await env.DB.prepare('INSERT INTO vpass (tok, site, uses, created) VALUES (?1, ?2, 2, ?3)').bind(await vsha('pass:' + tok), ps, Date.now()).run();
+        back += '&newpass=' + encodeURIComponent(ps + ':' + tok);
+      }
+      back += '#show';
+    }
+    if (op === 'stop') { await env.DB.prepare('UPDATE vpass SET uses = 0 WHERE rowid = ?').bind(Number(f.get('id')) || 0).run(); back += '#show'; }
+    return new Response(null, { status: 303, headers: { location: back, 'cache-control': 'no-store' } });
+  }
+  // 👀 the show link itself. Opening it only shows a button (message apps open links to make previews, and that must not use
+  // one of the two goes); the button uses one go and opens the site in guest mode: help.js then saves nothing on that device
+  // and nothing is counted.
+  const sm = url.pathname.match(/^\/__show\/([a-f0-9]{32})$/);
+  if (sm && (request.method === 'GET' || request.method === 'POST')) {
+    const site = url.hostname.split('.')[0], h = await vsha('pass:' + sm[1]), since = Date.now() - 14 * 864e5;
+    let left = 0, opened = false;
+    if (env.DB) {
+      await visitsTable(env.DB);
+      if (request.method === 'POST') {
+        const r = await env.DB.prepare('UPDATE vpass SET uses = uses - 1 WHERE tok = ?1 AND site = ?2 AND uses > 0 AND created > ?3').bind(h, site, since).run();
+        opened = !!(r.meta && r.meta.changes);
+      } else {
+        const r = await env.DB.prepare('SELECT uses FROM vpass WHERE tok = ?1 AND site = ?2 AND created > ?3').bind(h, site, since).first();
+        left = r ? r.uses : 0;
+      }
+    }
+    const name = VSITES[site] || 'study site';
+    const body = opened ? `<p>Opening ${name}…</p><script>try { sessionStorage.setItem('guest', '1'); } catch (e) {} location.replace('/');</script>`
+      : left > 0 ? `<h1>👀 ${name}</h1><p>You have been sent a link to look at this revision site. It opens in guest mode: nothing is saved on your device.</p>
+<p>This link works <b>${left === 1 ? 'one more time' : 'twice'}</b>.</p><form method="post"><button type="submit">Open the site</button></form>`
+      : `<h1>This link has stopped working</h1><p>It could be opened twice, and it has been used. Please ask the person who sent it for a new one.</p>`;
+    return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${name}</title>
+<style>body{margin:0;padding:24px 16px;font:17px/1.5 system-ui,sans-serif;background:#f4f6fb;color:#1d2433;max-width:560px;margin-inline:auto}
+@media (prefers-color-scheme:dark){body{background:#12151c;color:#e8ecf3}}h1{font-size:24px}button{font:inherit;font-weight:700;padding:12px 22px;border-radius:999px;border:0;background:#0E8F6E;color:#fff;cursor:pointer}</style></head><body>${body}</body></html>`,
+      { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-robots-tag': 'noindex, nofollow', 'referrer-policy': 'no-referrer' } });
+  }
   if (url.pathname === '/__visits' && request.method === 'GET') {
     const k = url.searchParams.get('k') || '';
     if (!(await vOwner(k))) return new Response('Not found', { status: 404, headers: { 'x-robots-tag': 'noindex' } });
@@ -251,6 +359,48 @@ async function visitsHook(request, env, ctx) {
     }
     if (env.DB) { await visitsTable(env.DB); rows = (await env.DB.prepare('SELECT day, site, opens, devices FROM visits ORDER BY day DESC').all()).results || [];
       devs = (await env.DB.prepare('SELECT day, site, at, kind, secs, pages FROM vdev ORDER BY day DESC, at DESC').all()).results || []; }
+    // 💬 messages, 📊 parts used (last 7 days), 👀 show links (v6, 2026-10-21)
+    let chats = [], uses = [], passes = [];
+    if (env.DB) {
+      await chatSetup(env.DB);
+      chats = (await env.DB.prepare('SELECT id, thread, site, sender, kind, page, url, msg, created, done FROM chat ORDER BY id DESC LIMIT 2000').all()).results || [];
+      uses = (await env.DB.prepare('SELECT site, part, SUM(n) AS n FROM vuse WHERE day >= ?1 GROUP BY site, part ORDER BY n DESC').bind(vDay(6)).all()).results || [];
+      passes = (await env.DB.prepare('SELECT rowid AS id, site, uses, created FROM vpass WHERE created > ?1 ORDER BY created DESC LIMIT 20').bind(Date.now() - 14 * 864e5).all()).results || [];
+    }
+    const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const KIND = { mistake: '🚩 Mistake', idea: '💡 Idea to improve', dislike: '👎 Doesn’t like', other: '💬 Message' };
+    const when = ms => { const d = new Date(ms + 4 * 3600e3); return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }) + ' ' + d.toISOString().slice(11, 16); };
+    const threads = {}; for (const c of chats.slice().reverse()) (threads[c.thread] = threads[c.thread] || []).push(c);
+    const tlist = Object.values(threads).sort((a, b) => b[b.length - 1].id - a[a.length - 1].id);
+    const openT = tlist.filter(m => m.some(x => !x.done)), doneT = tlist.filter(m => m.every(x => x.done)).slice(0, 30);
+    const waiting = openT.filter(m => m[m.length - 1].sender === 'student').length;
+    const hid = (n, v) => `<input type="hidden" name="${n}" value="${esc(v)}">`;
+    const QUICK = ['✅ Thank you! It is fixed now.', '👍 Thank you, good idea! I will add it.', '🔍 Thank you, I am checking it.', '🙏 Thank you for telling me.'];
+    const thread = (m, isOpen) => {
+      const s = m[0].site, first = m.find(x => x.sender === 'student') || m[0], kinds = [...new Set(m.filter(x => x.sender === 'student').map(x => x.kind))];
+      const link = `https://${vHost(s)}${first.url && first.url.startsWith('/') ? first.url : '/'}`, canReply = !/^flag-/.test(m[0].thread);
+      return `<div class="th${isOpen && m[m.length - 1].sender === 'student' ? ' new' : ''}"><div class="thh"><b>${esc(VSITES[s] || s)}</b> ${kinds.map(x => `<span class="k k-${esc(x)}">${KIND[x] || KIND.other}</span>`).join(' ')} <small>· page: ${esc(first.page || 'Home')} · <a href="${esc(link)}" target="_blank" rel="noopener">open it</a></small></div>
+${m.map(x => `<div class="b ${x.sender === 'owner' ? 'mine' : 'st'}"><div>${esc(x.msg).replace(/\n/g, '<br>')}</div><small>${x.sender === 'owner' ? 'You' : 'Student'} · ${when(x.created)}</small></div>`).join('')}
+${isOpen ? (canReply ? `<form method="post" action="/__visits/reply" class="rf">${hid('k', k)}${hid('t', m[0].thread)}<div class="qr">${QUICK.map(q => `<button type="button" class="ghost" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div><textarea name="text" rows="2" required placeholder="Write a reply, or tap a ready answer above and edit it. The student sees it on the phone or computer they used."></textarea><button type="submit">Send reply</button></form>`
+        : '<p class="small">Sent before replies existed, so the student can’t see a reply.</p>')
+        + `<form method="post" action="/__visits/done" class="df">${hid('k', k)}${hid('t', m[0].thread)}<button type="submit" class="ghost">✓ Done: move to finished</button></form>`
+        : `<form method="post" action="/__visits/done" class="df">${hid('k', k)}${hid('t', m[0].thread)}${hid('undo', '1')}<button type="submit" class="ghost">↩ Open again</button></form>`}</div>`;
+    };
+    const stud = chats.filter(x => x.sender === 'student');
+    const fb = Object.keys(VSITES).map(s => { const c = kk => stud.filter(x => x.site === s && x.kind === kk); return [s, c('idea'), c('dislike'), c('mistake'), c('other')]; }).filter(r => r.slice(1).some(l => l.length));
+    const UN = { home: 'Home page', exam: 'Exam questions', topics: 'Topics', topic: 'A topic (notes, quiz, cards)', quiz: 'Quiz', test: 'Test', paper: 'Practice paper', print: 'Print papers',
+      library: 'Downloads', revise: '⚡ Revise', help: '❓ Help', plan: '📅 Study plan', progress: 'My progress', textbook: '📘 Textbook practice', gt: '🎟️ Golden tickets',
+      a: 'An assessment page', more: 'More', start: 'Start here', summary: 'Summary', equations: 'Equations', quick: 'Quick check', lab: 'Practicals', cheat: 'Cheat sheet', year: 'The whole year',
+      'tool-ask': '🤖 Ask AI', 'tool-read': '🔊 Read aloud', 'tool-big': 'A+ Bigger text', 'tool-sticky': '📌 Sticky note', 'tool-notes': '📝 My notes', 'tool-msg': '💬 Message sent' };
+    const uname = p => UN[p] || (p.charAt(0).toUpperCase() + p.slice(1).replace(/-/g, ' '));
+    const rate = uses.filter(u => /^(up|dn)-/.test(u.part)); uses = uses.filter(u => !/^(up|dn)-/.test(u.part));   // 👍/👎 "Was this page helpful?"
+    const rateRows = Object.keys(VSITES).map(s => {
+      const parts = {}; rate.filter(u => u.site === s).forEach(u => { const p = u.part.slice(3), o = parts[p] = parts[p] || [0, 0]; o[u.part.startsWith('up-') ? 0 : 1] += u.n; });
+      return [s, Object.entries(parts).sort((a, b) => (b[1][0] + b[1][1]) - (a[1][0] + a[1][1]))];
+    }).filter(([, l]) => l.length);
+    const useRows = Object.keys(VSITES).map(s => [s, uses.filter(u => u.site === s)]).filter(([, l]) => l.length);
+    const np = (url.searchParams.get('newpass') || '').split(':');
+    const newLink = VSITES[np[0]] && /^[a-f0-9]{32}$/.test(np[1] || '') ? `https://${vHost(np[0])}/__show/${np[1]}` : '';
     const used2 = d => devs.filter(x => x.day === d && (x.secs || 0) >= 120).length;
     const used = (d, s) => devs.filter(x => x.day === d && x.site === s && (x.secs || 0) >= 120).length;
     // no time yet: still in its first seconds (opened in the last 3 minutes), or opened and left at once (user 2026-10-20: the "–" looked like a fault)
@@ -261,14 +411,24 @@ async function visitsHook(request, env, ctx) {
     const sum = list => list.reduce((a, r) => [a[0] + r.devices, a[1] + r.opens], [0, 0]);
     const nice = d => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
     const pair = ([a]) => `<b>${a}</b>`;
-    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta http-equiv="refresh" content="60"><title>Visits</title>
+    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${waiting ? `(${waiting}) ` : ''}Visits</title>
 <style>:root{--bg:#f4f6fb;--card:#fff;--ink:#1d2433;--muted:#5b6475;--line:#e4e7ec;--brand:#0E8F6E}
 @media (prefers-color-scheme:dark){:root{--bg:#12151c;--card:#1c212b;--ink:#e8ecf3;--muted:#9aa3b2;--line:#2c3340;--brand:#34D3A3}}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,sans-serif;padding:16px}h1{margin:0 0 4px}p{color:var(--muted);margin:0 0 12px}
 .wrap{overflow-x:auto;background:var(--card);border-radius:12px;box-shadow:0 2px 12px #0001}table{border-collapse:collapse;width:100%;min-width:640px}
 th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:center;white-space:nowrap}th:first-child,td:first-child{text-align:left;position:sticky;left:0;background:var(--card)}
-th{font-size:13px;color:var(--muted)}td.z{color:var(--muted)}small{color:var(--muted)}tr.t td{border-top:2px solid var(--brand)}</style></head><body>
-<h1>📈 Visits</h1><p>Each box: how many <b>devices</b> opened that site that day (UAE time). A device counts once a day per site, however many times it opens it. <small>"· 3 used"</small> = how many of them really used it (2 minutes or more of tapping, typing, scrolling, watching a video or listening). Day total = all the sites' boxes for that day added up (user 2026-10-20: "total views for each day"); a student who used 3 sites counts 3 there. Total row = each site's days added up. Counting started on 19 Oct 2026. Only you have this link: please keep it private.</p>
+th{font-size:13px;color:var(--muted)}td.z{color:var(--muted)}small{color:var(--muted)}tr.t td{border-top:2px solid var(--brand)}
+h2{margin:22px 0 4px}.th{background:var(--card);border-radius:12px;box-shadow:0 2px 12px #0001;padding:12px;margin:0 0 12px;display:grid;gap:8px;max-width:760px}
+.th.new{outline:2px solid var(--brand)}.thh{line-height:1.7}.k{display:inline-block;padding:1px 9px;border-radius:999px;font-size:13px;font-weight:600;background:var(--bg)}
+.k-mistake{color:#b42318}.k-dislike{color:#9a5b00}.k-idea{color:var(--brand)}.b{max-width:85%;padding:8px 12px;border-radius:14px;white-space:normal;overflow-wrap:anywhere}
+.b.st{background:var(--bg);justify-self:start;border-bottom-left-radius:4px}.b.mine{background:var(--brand);color:#fff;justify-self:end;border-bottom-right-radius:4px}.b.mine small{color:#e6fff6}
+.rf{display:grid;gap:6px}.qr{display:flex;flex-wrap:wrap;gap:6px}.qr button{font-size:13px;padding:4px 10px}.rf textarea{font:inherit;font-size:16px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:inherit}
+button{font:inherit;font-weight:600;padding:8px 14px;border-radius:999px;border:0;background:var(--brand);color:#fff;cursor:pointer;justify-self:start}button.ghost{background:transparent;color:var(--brand);border:1px solid var(--line)}
+select{font:inherit;padding:7px;border-radius:8px}.newlink{background:var(--card);border:2px solid var(--brand);border-radius:12px;padding:12px;overflow-wrap:anywhere;max-width:760px}
+.nav{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 8px}.nav a{padding:4px 12px;border-radius:999px;background:var(--card);text-decoration:none;color:inherit;border:1px solid var(--line)}
+td.l{text-align:left;white-space:normal}</style></head><body>
+<h1>📈 Visits${waiting ? ` <small style="color:var(--brand)">· 💬 ${waiting} new</small>` : ''}</h1>
+<div class="nav"><a href="#msgs">💬 Messages${waiting ? ` (${waiting} new)` : ''}</a><a href="#fb">💡 Ideas &amp; dislikes</a><a href="#use">📊 What they use</a><a href="#show">👀 Show links</a><a href="#visits">📈 Visits</a></div><p>Each box: how many <b>devices</b> opened that site that day (UAE time). A device counts once a day per site, however many times it opens it. <small>"· 3 used"</small> = how many of them really used it (2 minutes or more of tapping, typing, scrolling, watching a video or listening). Day total = all the sites' boxes for that day added up (user 2026-10-20: "total views for each day"); a student who used 3 sites counts 3 there. Total row = each site's days added up. Counting started on 19 Oct 2026. Only you have this link: please keep it private.</p>
 <p id="me" style="color:var(--brand);font-weight:600"></p>
 <script>(function () { var own = false; try { own = localStorage.getItem('vown') === '1'; } catch (e) {}
   var me = document.getElementById('me'), go = ${JSON.stringify(meUrl)}, done = /[?&]done=1/.test(location.search);
@@ -276,13 +436,42 @@ th{font-size:13px;color:var(--muted)}td.z{color:var(--muted)}small{color:var(--m
   else if (go && !done) location.replace(go);
   else me.textContent = 'This device could not be set up, so your visits on it may still be counted.';
 })();</script>
+<h2 id="msgs">💬 Messages from students</h2><p>Mistakes, ideas and things they don’t like, sent with the buttons at the bottom of every page. No names. Your reply appears on the phone or computer that sent the message, the next time the student opens that site. New messages appear here within 30 seconds.</p>
+${openT.length ? openT.map(m => thread(m, true)).join('') : '<p><b>No open messages.</b></p>'}
+${doneT.length ? `<details><summary>Finished conversations (${doneT.length})</summary>${doneT.map(m => thread(m, false)).join('')}</details>` : ''}
+<h2 id="fb">💡 What students suggest and don’t like, by site</h2><p>Every 💡 idea to improve and 👎 thing they don’t like, newest first (open or finished).</p>
+${rateRows.length ? `<p><b>👍 / 👎 Was this page helpful?</b> One-tap answers at the bottom of each page (last 7 days), by part of the site:</p><div class="wrap" style="margin-bottom:12px"><table style="min-width:0"><tr><th>Site</th><th style="text-align:left">Part: 👍 helpful · 👎 not helpful</th></tr>${rateRows.map(([s, l]) => `<tr><td>${esc(VSITES[s])}</td><td class="l">${l.map(([p, [u, d]]) => `${esc(uname(p))}: 👍 <b>${u}</b> · 👎 <b${d > u ? ' style="color:#b42318"' : ''}>${d}</b>`).join(' &nbsp;|&nbsp; ')}</td></tr>`).join('')}</table></div>` : ''}
+${fb.length ? `<div class="wrap"><table style="min-width:0"><tr><th>Site</th><th>💡 Ideas</th><th>👎 Don’t like</th><th>🚩 Mistakes</th><th>💬 Other</th></tr>${fb.map(([s, i, d, mk, o]) => `<tr><td>${esc(VSITES[s])}</td><td>${i.length}</td><td>${d.length}</td><td>${mk.length}</td><td>${o.length}</td></tr>`).join('')}</table></div>
+${fb.filter(([, i, d]) => i.length || d.length).map(([s, i, d]) => `<details open><summary><b>${esc(VSITES[s])}</b></summary><ul>${[...i, ...d].sort((a, b) => b.id - a.id).slice(0, 15).map(x => `<li>${KIND[x.kind]}: “${esc(x.msg)}” <small>· ${when(x.created)}</small></li>`).join('')}</ul></details>`).join('')}` : '<p>None yet.</p>'}
+<h2 id="use">📊 What students use (last 7 days)</h2><p>How many times each part was opened, all devices together. No device numbers and no names: just totals. Your own devices are not counted.</p>
+${useRows.length ? `<div class="wrap"><table style="min-width:0"><tr><th>Site</th><th style="text-align:left">Parts opened (most used first)</th></tr>${useRows.map(([s, l]) => `<tr><td>${esc(VSITES[s])}</td><td class="l">${l.slice(0, 14).map(u => `${esc(uname(u.part))} <b>${u.n}</b>`).join(' · ')}</td></tr>`).join('')}</table></div>` : '<p>Nothing yet: counting started on 21 Oct 2026.</p>'}
+<h2 id="show">👀 Show links</h2><p>A link for someone outside the class, for example a friend. It opens one site <b>twice only</b>, then stops (and after 14 days). While they use it, nothing is saved on their device, they are not counted, and the message buttons are hidden. The sites have no password, so it can’t stop someone who copies the normal web address.</p>
+<form method="post" action="/__visits/pass" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px">${hid('k', k)}<label for="ps">Site:</label><select id="ps" name="site">${Object.keys(VSITES).map(s => `<option value="${s}">${esc(VSITES[s])}</option>`).join('')}</select><button type="submit">Make a show link</button></form>
+${newLink ? `<div class="newlink"><b>Your new show link</b> (it is shown only now):<br><span id="nl">${esc(newLink)}</span><br><button type="button" id="cp" style="margin-top:8px">Copy the link</button> <span id="cpd" class="small"></span></div>` : ''}
+${passes.length ? `<div class="wrap" style="margin-top:10px"><table style="min-width:0"><tr><th>Site</th><th>Made</th><th>Goes left</th><th></th></tr>${passes.map(p => `<tr><td>${esc(VSITES[p.site] || p.site)}</td><td>${when(p.created)}</td><td>${p.uses > 0 ? p.uses + ' of 2' : 'used up / stopped'}</td><td>${p.uses > 0 ? `<form method="post" action="/__visits/stop" style="margin:0">${hid('k', k)}${hid('id', p.id)}<button type="submit" class="ghost">Stop it</button></form>` : ''}</td></tr>`).join('')}</table></div>` : ''}
+<h2 id="visits">📈 Visits</h2>
 <div class="wrap"><table><tr><th>Day</th>${sites.map(s => `<th>${VSITES[s]}</th>`).join('')}<th>Day total</th></tr>
 ${days.length ? days.map(d => `<tr><td>${nice(d)}</td>${sites.map(s => cell(d, s)).join('')}<td><b>${sum(rows.filter(r => r.day === d))[0]}</b>${used2(d) ? `<small> · ${used2(d)} used</small>` : ''}</td></tr>`).join('') : `<tr><td colspan="${sites.length + 2}">No visits counted yet. Open any site, then refresh this page.</td></tr>`}
 <tr class="t"><td><b>Total</b></td>${sites.map(s => `<td>${pair(sum(rows.filter(r => r.site === s)))}</td>`).join('')}<td>${pair(sum(rows))}</td></tr></table></div>
 <h2 style="margin:20px 0 4px">🆕 Which devices (last 3 days)</h2><p>Each new device, with the time it first opened that site (UAE) and its type. Use it to tell your own devices from anyone else's. <b>Time used</b> counts only while the student is tapping, typing, scrolling, watching a video or listening; it arrives after 15 seconds of use and then every minute. <small>starting…</small> = opened in the last few minutes, no time sent yet. <small>quick look</small> = opened and left within seconds. This page updates itself every minute.</p>
 <div class="wrap"><table style="min-width:0"><tr><th>Day</th><th>Site</th><th>First opened</th><th>Device</th><th>Time used</th><th>Pages</th></tr>
 ${devs.length ? devs.map(r => `<tr><td>${nice(r.day)}</td><td>${VSITES[r.site] || r.site}</td><td>${r.at || '<small>before times were saved</small>'}</td><td>${r.kind || '<small>not saved</small>'}</td><td>${mins(r)}</td><td>${r.pages || 1}</td></tr>`).join('') : '<tr><td colspan="6">No devices yet.</td></tr>'}</table></div>
-<p style="margin-top:12px">Open this page once on each phone or laptop you use, and your visits on it stop being counted (numbers up to 19 Oct may include yours). A phone in private mode, or the same phone in a different browser, counts as another device. Cloudflare Web Analytics (dash.cloudflare.com) also has visit numbers; it counts everyone, you too.</p></body></html>`;
+<p style="margin-top:12px">Open this page once on each phone or laptop you use, and your visits on it stop being counted (numbers up to 19 Oct may include yours). A phone in private mode, or the same phone in a different browser, counts as another device. Cloudflare Web Analytics (dash.cloudflare.com) also has visit numbers; it counts everyone, you too.</p>
+<script>(function () {   // refresh every 30 seconds, but never while you are typing a reply
+  setInterval(function () {
+    var busy = [].some.call(document.querySelectorAll('textarea'), function (t) { return t.value.trim() || t === document.activeElement; });
+    if (!busy && document.visibilityState === 'visible') location.reload();
+  }, 30000);
+  document.addEventListener('click', function (e) {   // a ready answer fills the reply box, to send as it is or edit
+    var b = e.target.closest && e.target.closest('[data-q]'); if (!b) return;
+    var ta = b.closest('form').querySelector('textarea'); ta.value = b.getAttribute('data-q'); ta.focus();
+  });
+  var cp = document.getElementById('cp');
+  if (cp) cp.onclick = function () {
+    var t = document.getElementById('nl').textContent, d = document.getElementById('cpd');
+    try { navigator.clipboard.writeText(t).then(function () { d.textContent = 'Copied'; }, function () { d.textContent = 'Select the link and copy it'; }); } catch (e) { d.textContent = 'Select the link and copy it'; }
+  };
+})();</script></body></html>`;
     return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-robots-tag': 'noindex, nofollow', 'referrer-policy': 'no-referrer' } });
   }
   return null;
@@ -294,6 +483,7 @@ export default {
     { const v = await visitsHook(request, env, ctx); if (v) return v; }
     const url = new URL(request.url);
     if (url.protocol === 'http:') { url.protocol = 'https:'; return Response.redirect(url.toString(), 301); }
+    if (url.pathname === '/api/chat') return secure(await chatApi(request, env, url), request);
     if (url.pathname === '/api/flag' || url.pathname.startsWith('/api/flag/')) return secure(await flagApi(request, env, url), request);
     if (url.pathname.startsWith('/api/sync/')) return secure(await syncApi(request, env, url), request);
     if (!['GET', 'HEAD'].includes(request.method)) return new Response('Method not allowed', { status: 405, headers: { allow: 'GET, HEAD' } });

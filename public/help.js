@@ -2,6 +2,23 @@
    HELP.view(groups, o): groups = the site's NAVG menu; o = { backup: 'progress' | 'home', offline: bool, claude: bool }
    <script src="help.js" data-plain> (Year 8 Maths): no "What's new" and no "This year" box; those describe the other sites. */
 (function () {
+  /* 👀 Guest mode (a "show link" made on the owner's private page; user 2026-10-21: "a link to a friend outside the school that
+     works twice only ... not save anything"). Everything the site would keep in this browser is kept only until the tab is
+     closed (localStorage → sessionStorage), no visit or usage numbers are sent, and the message buttons are hidden.
+     help.js loads before each site's own scripts, so they all see this. */
+  const GUEST = (() => { try { return sessionStorage.getItem('guest') === '1'; } catch (e) { return false; } })();
+  if (GUEST && !Storage.prototype.__guest) try {   // normally guest.js has done this already, as the first script on the page
+    const L = window.localStorage, S = window.sessionStorage, P = Storage.prototype, g = P.getItem, st = P.setItem, rm = P.removeItem, cl = P.clear;
+    P.getItem = function (x) { return this === L ? g.call(S, 'g:' + x) : g.call(this, x); };
+    P.setItem = function (x, v) { return this === L ? st.call(S, 'g:' + x, v) : st.call(this, x, v); };
+    P.removeItem = function (x) { return this === L ? rm.call(S, 'g:' + x) : rm.call(this, x); };
+    P.clear = function () { return this === L ? undefined : cl.call(this); };
+    P.__guest = true;
+  } catch (e) {}
+  // the part of the site on screen, e.g. "exam", "topic", "revise" ("home" for the Home page): used for the usage totals and 👍/👎
+  const partNow = () => location.hash.replace(/^#\/?/, '').split(/[/?]/)[0].toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 27) || 'home';
+  const sget = k => { try { return sessionStorage.getItem(k); } catch (e) { return null; } };
+  const sset = (k, v) => { try { sessionStorage.setItem(k, v); } catch (e) {} };
   const PLAIN = !!(document.currentScript && document.currentScript.hasAttribute('data-plain'));
   // <script data-share src="help.js"> (IGCSE Edexcel Maths, the copy anyone may share): no "class only" wording (user 2026-10-19)
   const SHARE = !!(document.currentScript && document.currentScript.hasAttribute('data-share'));
@@ -100,12 +117,13 @@ ${window.ASK_AI ? `<div class="card" style="margin-top:12px"><h3>🤖 Stuck? Ask
 <div class="card" style="margin-top:12px"><h3>👪 For parents</h3>
   <ul style="margin:6px 0 0;padding-left:20px;line-height:1.6">
     <li>This site was made by a parent to help the class revise. It follows the school's study lists, but it is <b>not an official school website</b> and the teachers are not involved. If something here doesn't match your school notes, please flag it (see below).</li>
+    <li>The site counts how many times each part is opened, and the 👍 / 👎 answers, as totals only, to see what helps most. Messages you send have no name attached. Nothing identifies you.</li>
     <li>No sign-up, no names, no ads.<span class="needsync"> Online saving is optional: a parent turns it on, only study progress is stored under a random code (no names, emails or phone numbers), and it can be deleted at any time.</span></li>
     ${window.ASK_AI ? '<li>The <b>🤖 Ask AI</b> helper uses a free AI model (Google’s open Gemma model, run by Cloudflare). Each question is checked for safety first, it only helps with school work, and this site does <b>not save</b> questions or answers. A daily limit keeps it free.</li>' : ''}
     ${o.claude ? '<li>Some writing tasks have an optional button that copies the answer so it can be pasted into Claude (claude.ai) for feedback. Nothing is sent unless someone chooses to do this. Claude accounts are for adults (18+), so a parent should do this step.</li>' : ''}
   </ul></div>
-<div class="card" style="margin-top:12px"><h3>🐞 Found a mistake?</h3>
-  <p style="margin:0">Tap <b>🚩 Flag a mistake</b> at the bottom of the page, type what is wrong and tap <b>📨 Send</b>. It goes straight to the parent who made this site, with the page you were on.</p></div>
+<div class="card" style="margin-top:12px"><h3>🐞 Found a mistake? Have an idea?</h3>
+  <p style="margin:0">Tap <b>🚩 Flag a mistake</b> or <b>💬 Ideas &amp; feedback</b> at the bottom of the page, type your message and tap <b>📨 Send</b>. It goes straight to the parent who made this site, with the page you were on. If they reply, you see it in the same place on this device. You can also tap 👍 or 👎 to say if a page helped you.</p></div>
 ${fixesHTML()}
 <div class="card" id="declaration" style="margin-top:12px"><h3>📜 Declaration</h3>
   <ul style="margin:6px 0 0;padding-left:20px;line-height:1.6" class="small">
@@ -131,30 +149,79 @@ ${fixesHTML()}
     const route = location.hash.replace(/^#\/?/, '');
     return (h ? h.textContent.replace(/\s+/g, ' ').trim() : '') || route || 'Home';
   }
-  function flag(btn) {
-    const out = btn.parentNode.querySelector('.flagmsg');
-    if (out.querySelector('.flagpanel')) { out.innerHTML = ''; return; }   // tap again to close
-    out.innerHTML = `<div class="flagpanel"><b>🚩 Report a mistake</b>
-      <label class="small" style="display:block;margin:6px 0 4px">What's wrong? (for example: "Question 3: the answer should be 1497")</label>
-      <textarea class="flagtext" rows="3" maxlength="1000" placeholder="Type what is wrong here…"></textarea>
+  /* 💬 Messages, like a chat (user 2026-10-21: "i want it like chat to my private admin page"; "suggestions to improve and what
+     they don't like about each site"). 🚩 Flag a mistake and 💬 Ideas & feedback open the same panel. Messages go to the site's
+     own /api/chat and appear on the owner's private page, where the parent can reply. This device keeps a random conversation
+     number (no name), so the reply shows here, in the panel, and a notice says when there is a new one. */
+  const KINDS = { idea: '💡 An idea to improve', dislike: '👎 Something I don’t like', mistake: '🚩 A mistake' };
+  const chatId = make => {
+    let t = get('chat-t');
+    if (!t && make) { t = crypto.randomUUID ? crypto.randomUUID() : (Math.random().toString(36).slice(2) + Date.now().toString(36) + Math.random().toString(36).slice(2)); put('chat-t', t); }
+    return t || '';
+  };
+  const escH = x => String(x).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  let newReplies = 0;
+  function chatLog(box, msgs) {
+    if (!msgs || !msgs.length) { box.innerHTML = ''; return; }
+    box.innerHTML = msgs.slice(-20).map(m => `<div class="cb ${m.from === 'owner' ? 'them' : 'me'}"><div>${escH(m.msg).replace(/\n/g, '<br>')}</div><small>${m.from === 'owner' ? 'Reply from the parent who made this site' : 'You'} · ${new Date(m.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</small></div>`).join('');
+    const top = Math.max(0, ...msgs.filter(m => m.from === 'owner').map(m => m.id));
+    if (top) { put('chat-read', String(top)); newReplies = 0; sset('chat-new', '0'); paintReplies(); }
+    box.scrollTop = box.scrollHeight;
+  }
+  function chat(btn, mode) {   // mode: 'mistake' (🚩 button), 'dislike' (after 👎) or '' (💬 button)
+    const out = btn.closest('.flagbar').querySelector('.flagmsg');
+    if (out.querySelector('.flagpanel') && out.dataset.mode === mode) { out.innerHTML = ''; return; }   // tap again to close
+    out.dataset.mode = mode;
+    let kind = mode === 'mistake' || mode === 'dislike' ? mode : '';
+    const chips = mode === 'mistake' ? '' : `<div class="chatkinds" role="group" aria-label="What is it about?">${['idea', 'dislike', 'mistake'].map(k => `<button type="button" class="chatkind" data-k="${k}" aria-pressed="${kind === k}">${KINDS[k]}</button>`).join('')}</div>`;
+    out.innerHTML = `<div class="flagpanel"><b>${mode === 'mistake' ? '🚩 Report a mistake' : '💬 Ideas & feedback'}</b>
+      <div class="chatlog" aria-live="polite"></div>${chips}
+      <label class="small" style="display:block;margin:6px 0 4px" for="chattext">${mode === 'mistake' ? 'What’s wrong? (for example: "Question 3: the answer should be 1497")' : 'How could this site be better? Or what don’t you like?'}</label>
+      <textarea id="chattext" class="flagtext" rows="3" maxlength="1000" placeholder="Type here…"></textarea>
       <div class="flagbtns"><button type="button" class="flagsend">📨 Send</button></div>
-      <p class="small muted flagnote" style="margin:6px 0 0">It goes straight to the parent who made this site, with the page you are on. Please don't write your name or other personal details.</p></div>`;
-    const ta = out.querySelector('.flagtext'), note = out.querySelector('.flagnote'), send = out.querySelector('.flagsend');
+      <p class="small muted flagnote" style="margin:6px 0 0">It goes straight to the parent who made this site, with the page you are on. You may get a reply here, on this device. Please don't write your name or other personal details.</p></div>`;
+    const log = out.querySelector('.chatlog'), ta = out.querySelector('.flagtext'), note = out.querySelector('.flagnote'), send = out.querySelector('.flagsend');
+    out.querySelectorAll('.chatkind').forEach(c => c.onclick = () => { kind = c.dataset.k; out.querySelectorAll('.chatkind').forEach(x => x.setAttribute('aria-pressed', x === c)); ta.focus(); });
+    const t0 = chatId(false);
+    if (t0) fetch('/api/chat?t=' + encodeURIComponent(t0)).then(r => r.json()).then(j => chatLog(log, j.msgs)).catch(() => {});
     send.onclick = () => {
       const text = ta.value.trim();
-      if (text.length < 2) { note.textContent = 'Please type what is wrong first.'; ta.focus(); return; }
+      if (text.length < 2) { note.textContent = 'Please type your message first.'; ta.focus(); return; }
       send.disabled = true; send.textContent = 'Sending…';
-      fetch('/api/flag', { method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ text, page: flagPage(), url: location.pathname + location.hash }) })
+      fetch('/api/chat', { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ t: chatId(true), kind: kind || 'other', text, page: flagPage(), url: location.pathname + location.hash }) })
         .then(r => r.json().catch(() => ({})).then(j => ({ ok: r.ok, j })))
         .then(({ ok, j }) => {
-          if (ok) { out.innerHTML = '<div class="flagpanel"><b>✅ Sent. Thank you!</b><p class="small muted" style="margin:6px 0 0">The parent who made this site will check it and fix it.</p></div>'; return; }
-          note.textContent = j.error || 'It did not send. Please try again in a minute.';
           send.disabled = false; send.textContent = '📨 Send';
+          if (ok) { ta.value = ''; chatLog(log, j.msgs); note.innerHTML = '<b>✅ Sent. Thank you!</b> If the parent who made this site replies, you will see it here, on this device.'; if (window.SITE_USE) SITE_USE('tool-msg'); return; }
+          note.textContent = j.error || 'It did not send. Please try again in a minute.';
         })
         .catch(() => { note.textContent = 'It did not send (no internet?). Your text is still here: try again when you are online.'; send.disabled = false; send.textContent = '📨 Send'; });
     };
     ta.focus();
+  }
+  // a new reply? checked when a page opens (at most every 2 minutes); shown on the 💬 button and at the top of the page
+  function checkReplies() {
+    const t = chatId(false); if (GUEST || !t) return;
+    if (Date.now() - (+sget('chat-check') || 0) < 120000) { newReplies = +(sget('chat-new') || 0); paintReplies(); return; }
+    sset('chat-check', String(Date.now()));
+    fetch('/api/chat?t=' + encodeURIComponent(t)).then(r => r.json()).then(j => {
+      const read = +(get('chat-read') || 0);
+      newReplies = (j.msgs || []).filter(m => m.from === 'owner' && m.id > read).length; sset('chat-new', String(newReplies)); paintReplies();
+    }).catch(() => {});
+  }
+  function paintReplies() {
+    const app = document.getElementById('app'); if (!app) return;
+    const b = app.querySelector(':scope > .flagbar .ideabtn');
+    if (b) b.innerHTML = '💬 Ideas &amp; feedback' + (newReplies ? ` <span class="chatbadge">${newReplies} new ${newReplies === 1 ? 'reply' : 'replies'}</span>` : '');
+    let r = app.querySelector(':scope > .replybar');
+    if (!newReplies) { if (r) r.remove(); return; }
+    if (!r) {
+      r = document.createElement('div'); r.className = 'replybar';
+      r.innerHTML = '💬 <b>The parent who made this site replied to your message.</b> <button type="button">Read it</button>';
+      r.querySelector('button').onclick = () => { const i = app.querySelector(':scope > .flagbar .ideabtn'); if (i) { i.scrollIntoView({ behavior: 'smooth', block: 'center' }); chat(i, ''); } };
+      app.insertBefore(r, app.firstChild);
+    }
   }
   /* storage that never breaks the page (private mode can block it) */
   const get = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
@@ -189,6 +256,7 @@ ${fixesHTML()}
   /* 🆕 What's new: shown on the Home page for 2 weeks after each change, newest first; only the 2 newest are open, the rest
      fold under "More" so the box stays short on phones (2026-10-19). [date, text, only on sites whose title starts with this] */
   const NEWS = [
+    ['2026-10-21', '💬 NEW: tell us your ideas or what you don’t like with 💬 Ideas & feedback at the bottom of every page, and see the reply there. Tap 👍 or 👎 to say if a page helped.'],
     ['2026-10-20', '🌸 NEW in 🎯 Practise: PETAL step by step. Practise each part of PETAL on its own with marking, including 🔗 L+: linking to Orwell’s intentions and the context.', 'Year 9 English'],
     ['2026-10-20', '🤖 NEW: an AI helper. Stuck on something? Tap 🤖 Ask AI at the top of the screen and ask about the page you are on.', 'Year '],
     ['2026-10-19', '🎟 NEW: Golden Ticket tasks. The school’s extra challenge tasks: print or do them, then hand them in to your teacher (in the menu).'],
@@ -243,7 +311,7 @@ ${fixesHTML()}
         if (!id) { id = (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36)); localStorage.setItem('vid', id); }
         localStorage.removeItem('vday');
       } catch (e) {}
-      if (!own) {
+      if (!own && !GUEST) {
         navigator.sendBeacon('/__visit?d=' + encodeURIComponent(id));
         // ⏱ real use or a quick look? (user 2026-10-19). Seconds count while the page is on screen AND the student is doing
         // something: tapped, typed or scrolled in the last 2 minutes, OR a video / Read aloud is playing (user 2026-10-20: "even
@@ -251,6 +319,15 @@ ${fixesHTML()}
         let act = 0, pages = 1, first = true, lastIn = Date.now();
         ['pointerdown', 'keydown', 'input', 'scroll', 'touchstart', 'wheel'].forEach(ev => addEventListener(ev, () => { lastIn = Date.now(); }, { passive: true, capture: true }));
         addEventListener('hashchange', () => { pages++; lastIn = Date.now(); });
+        // 📊 which parts are used (user 2026-10-21: "without knowing the persons can i know how they are using it"): page parts and
+        // tools, sent as totals without the device number, every minute and when the page is left
+        const use = {}, count = p => { use[p] = (use[p] || 0) + 1; };
+        count(partNow()); addEventListener('hashchange', () => count(partNow()));
+        const TOOLS = [['.ask-fab', 'tool-ask'], ['.readbtn', 'tool-read'], ['.bigbtn', 'tool-big'], ['.stk-add', 'tool-sticky'], ['.nb-openbtn', 'tool-notes']];
+        document.addEventListener('click', e => { const t = e.target.closest && TOOLS.find(([sel]) => e.target.closest(sel)); if (t) count(t[1]); }, true);
+        const flushUse = () => { const k = Object.keys(use); if (!k.length) return; navigator.sendBeacon('/__visit?use=' + encodeURIComponent(k.slice(0, 25).map(p => p + ':' + use[p]).join(','))); k.forEach(p => delete use[p]); };
+        window.SITE_USE = count;
+        setInterval(flushUse, 60000); document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushUse(); }); addEventListener('pagehide', flushUse);
         const playing = () => { try { return [...document.querySelectorAll('video, audio')].some(m => !m.paused && !m.ended) || !!(window.speechSynthesis && speechSynthesis.speaking); } catch (e) { return false; } };
         setInterval(() => { if (document.visibilityState === 'visible' && (Date.now() - lastIn < 120000 || playing())) act += 15; }, 15000);
         const send = () => { if (act || pages > (first ? 1 : 0)) { navigator.sendBeacon('/__visit?u=1&d=' + encodeURIComponent(id) + '&t=' + act + '&p=' + pages); act = 0; pages = 0; first = false; } };
@@ -270,16 +347,31 @@ ${fixesHTML()}
     if (!app.querySelector(':scope > .flagbar')) {
       const d = document.createElement('div'); d.className = 'flagbar';
       d.innerHTML = (canSpeak ? `<button type="button" class="readbtn">${speaking ? '⏹ Stop reading' : '🔊 Read aloud'}</button>` : '')
-        + `<button type="button" class="bigbtn" aria-pressed="${bigOn()}">A+ Bigger text</button><button type="button" class="flagbtn">🚩 Flag a mistake</button><div class="flagmsg small" role="status"></div>`
+        + `<button type="button" class="bigbtn" aria-pressed="${bigOn()}">A+ Bigger text</button>`
+        + (GUEST ? '<p class="guestline small">👀 Guest view: nothing is saved on this device.</p>'
+          : `<button type="button" class="flagbtn">🚩 Flag a mistake</button><button type="button" class="ideabtn">💬 Ideas &amp; feedback</button>`
+            + `<div class="ratebar small">${sget('rated:' + partNow()) ? 'Thank you for your answer!' : 'Was this page helpful? <button type="button" class="rateup" aria-label="Yes, it was helpful">👍</button><button type="button" class="ratedn" aria-label="No, it was not helpful">👎</button>'}</div>`)
+        + `<div class="flagmsg small" role="status"></div>`
         + (YR ? `<a class="yrlink small" href="https://year${YR}.deirarevise.workers.dev/">🏠 All Year ${YR} subjects</a>` : '')
         + (SHARE ? `<p class="copyline">© 2026. A free study site made voluntarily by a parent. Exam questions and mark schemes © Pearson Education Ltd, used for free, non-commercial practice; video links go to Corbettmaths. You are welcome to share this link.</p>`
           : `<p class="copyline">© 2026. Notes, quizzes and study plans made for these revision sites. Lesson slides belong to the school, and textbook and story extracts belong to their publishers and authors; they are used here only to help the class revise. Please don't copy or share these sites outside the class.</p>`)
         + `<p class="dedication" dir="rtl" lang="ar"><b>الحمد لله الذي بنعمته تتمّ الصالحات.<br>بفضل الله وتوفيقه تمّ هذا العمل، ليكون صدقةً جاريةً عنّي وعن والديّ الكريمين.<br>نسأل الله العليّ القدير أن يجعل فيه النفع والبركة لكلّ طالب علمٍ يمرّ من هنا، وأن يتقبّله منّا بقبولٍ حسن، ويجعله في ميزان حسناتنا جميعًا.<br>ولا تنسوني وأولادي من صالح دعائكم. 🤲</b></p>`
         + `<p class="dedication en" lang="en"><b>All praise is due to Allah, by whose grace good deeds are completed.<br>By the grace of Allah and His help, this work was completed, as an ongoing charity (sadaqah jariyah) for me and my dear parents.<br>We ask Allah, the Most High, the Almighty, to make it useful and blessed for every student who passes by here, to accept it from us, and to place it in the scale of good deeds for all of us.<br>Please remember me and my children in your prayers. 🤲</b></p>`;
-      d.querySelector('.flagbtn').onclick = e => flag(e.currentTarget);
+      if (!GUEST) {
+        d.querySelector('.flagbtn').onclick = e => chat(e.currentTarget, 'mistake');
+        d.querySelector('.ideabtn').onclick = e => chat(e.currentTarget, '');
+        // 👍/👎 one tap per part of the site per visit: only totals go to the owner's page (no names, no device number)
+        const rb = d.querySelector('.ratebar'), rate = up => {
+          sset('rated:' + partNow(), up ? 'up' : 'dn'); if (window.SITE_USE) SITE_USE((up ? 'up-' : 'dn-') + partNow());
+          rb.innerHTML = up ? 'Thank you! 👍' : 'Thank you for telling us. <button type="button" class="ratewhy">Tell us what to improve</button>';
+          const w = rb.querySelector('.ratewhy'); if (w) w.onclick = () => chat(w, 'dislike');
+        };
+        if (rb.querySelector('.rateup')) { rb.querySelector('.rateup').onclick = () => rate(true); rb.querySelector('.ratedn').onclick = () => rate(false); }
+      }
       d.querySelector('.bigbtn').onclick = e => { setBig(!bigOn()); e.currentTarget.setAttribute('aria-pressed', bigOn()); };
       if (canSpeak) d.querySelector('.readbtn').onclick = e => speak(e.currentTarget);
       app.appendChild(d);
+      paintReplies();
     }
     const home = !location.hash.replace(/^#\/?/, '');
     if (home && (TERMS || window.YEAR_PLAN) && !PLAIN && !app.querySelector(':scope > .termbar')) {
@@ -316,6 +408,22 @@ ${fixesHTML()}
 .flagbtns a, .flagbtns button { padding: 8px 14px; border-radius: 999px; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; text-decoration: none; border: 1px solid var(--line, #CBD5E1); background: var(--card, #fff); color: inherit; }
 .flagbtns .flagsend { background: var(--brand, #1D4ED8); border-color: var(--brand, #1D4ED8); color: #fff; } .flagbtns .flagsend:disabled { opacity: .6; }
 .flagbar .yrlink { flex-basis: 100%; text-align: center; margin-top: 4px; }
+.flagbar .ratebar { flex-basis: 100%; text-align: center; color: var(--muted, #5B6475); display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; align-items: center; }
+.flagbar .ratebar button { padding: 4px 12px; font-size: 18px; }
+.flagbar .ratebar .ratewhy { font-size: 14px; }
+.flagbar .guestline { flex-basis: 100%; text-align: center; margin: 0; font-weight: 600; }
+.chatkinds { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.flagpanel .chatkind { padding: 6px 12px; font-size: 14px; }
+.flagpanel .chatkind[aria-pressed="true"] { border-color: var(--brand, #1D4ED8); background: color-mix(in srgb, var(--brand, #1D4ED8) 14%, transparent); color: inherit; font-weight: 700; }
+.chatlog { display: grid; gap: 6px; margin: 8px 0 0; max-height: 280px; overflow-y: auto; }
+.chatlog:empty { display: none; }
+.chatlog .cb { max-width: 85%; padding: 8px 12px; border-radius: 14px; overflow-wrap: anywhere; }
+.chatlog .cb small { display: block; font-size: 11.5px; opacity: .8; margin-top: 2px; }
+.chatlog .me { justify-self: end; background: color-mix(in srgb, var(--brand, #1D4ED8) 14%, transparent); border-bottom-right-radius: 4px; }
+.chatlog .them { justify-self: start; background: color-mix(in srgb, var(--muted, #5B6475) 14%, transparent); border-bottom-left-radius: 4px; }
+.chatbadge { display: inline-block; margin-left: 4px; padding: 1px 8px; border-radius: 999px; background: var(--brand, #1D4ED8); color: #fff; font-size: 12px; font-weight: 700; }
+.replybar { margin: 0 0 12px; padding: 10px 14px; border-radius: 12px; border: 2px solid var(--brand, #1D4ED8); background: var(--card, #fff); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.replybar button { padding: 6px 14px; border-radius: 999px; border: 0; background: var(--brand, #1D4ED8); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
 .flagbar .dedication { flex-basis: 100%; text-align: center; font-size: 12.5px; line-height: 1.8; margin: 10px 8px 4px; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--brand, #0E8F6E) 8%, transparent); font-family: 'Segoe UI', Tahoma, 'Noto Naskh Arabic', sans-serif; }
 .flagbar .dedication.en { font-size: 11.5px; line-height: 1.6; margin-top: 4px; }
 .flagbar .copyline { flex-basis: 100%; text-align: center; font-size: 12px; line-height: 1.4; color: var(--muted, #5B6475); margin: 6px 8px 0; }
@@ -341,7 +449,7 @@ html:not(.sync-on) .needsync { display: none !important; }`;
   document.head.appendChild(css);
   function watch() {
     const app = document.getElementById('app'); if (!app) return;
-    new MutationObserver(addBars).observe(app, { childList: true }); addBars();
+    new MutationObserver(addBars).observe(app, { childList: true }); addBars(); checkReplies();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watch); else watch();
   window.HELP = { view };

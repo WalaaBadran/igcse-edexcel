@@ -276,6 +276,7 @@ async function vGuestDev(db, gh, site, dv, bind) {   // is this guest visit tied
 }
 const vGuestPage = (title, body, setCk) => new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${title}</title><style>body{margin:0 auto;padding:24px 16px;font:17px/1.5 system-ui,sans-serif;background:#f4f6fb;color:#1d2433;max-width:560px}@media (prefers-color-scheme:dark){body{background:#12151c;color:#e8ecf3}}h1{font-size:24px}</style></head><body>${body}</body></html>`,
   { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-robots-tag': 'noindex, nofollow', 'referrer-policy': 'no-referrer', ...(setCk ? { 'set-cookie': setCk } : {}) } });
+const VKEEP = 3;   // how many show links are kept (the newest)
 const vHost = s => VHOST[s] || `${s}.deirarevise.workers.dev`;
 const vsha = async t => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t)))].map(b => b.toString(16).padStart(2, '0')).join('');
 const vOwner = async k => (await vsha('deirarevise-visits:' + k)) === VISITS_HASH;
@@ -343,7 +344,7 @@ async function visitsHook(request, env, ctx) {
   }
   // 💬 owner actions from the private page (forms, so they work without any script): reply, finish a conversation,
   // make or stop a "show link"
-  if (/^\/__visits\/(reply|done|pass|stop|reopen|solved|lockon|lockoff|joinnew)$/.test(url.pathname) && request.method === 'POST') {
+  if (/^\/__visits\/(reply|done|pass|stop|reopen|solved|lockon|lockoff|joinnew|del)$/.test(url.pathname) && request.method === 'POST') {
     let f; try { f = await request.formData(); } catch (e) { return new Response('Bad request', { status: 400 }); }
     const k = String(f.get('k') || '');
     if (!env.DB || !(await vOwner(k))) return new Response('Not found', { status: 404, headers: { 'x-robots-tag': 'noindex' } });
@@ -371,11 +372,20 @@ async function visitsHook(request, env, ctx) {
       if (VSITES[ps] || VHUBS[ps]) {
         const tok = (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g, '').slice(0, 32);
         await env.DB.prepare('INSERT INTO vpass (tok, site, uses, created) VALUES (?1, ?2, 2, ?3)').bind(await vsha('pass:' + tok), ps, Date.now()).run();
+        // only the newest show links are kept (user 2026-10-21: "don't save, just the last ones created"): older ones and their
+        // records are deleted, and stop working
+        await env.DB.prepare(`DELETE FROM vpassuse WHERE pass IN (SELECT tok FROM vpass ORDER BY created DESC LIMIT -1 OFFSET ${VKEEP})`).run();
+        await env.DB.prepare(`DELETE FROM vpass WHERE tok IN (SELECT tok FROM vpass ORDER BY created DESC LIMIT -1 OFFSET ${VKEEP})`).run();
         back += '&newpass=' + encodeURIComponent(ps + ':' + tok);
       }
       back += '#show';
     }
     if (op === 'lockon' || op === 'lockoff' || op === 'joinnew') { await cpOwnerSet(env.DB, op); back += '#classpass'; }   // 🔑 class pass
+    if (op === 'del') {   // 🗑 delete one show link and its records (it stops working)
+      const row = await env.DB.prepare('SELECT tok FROM vpass WHERE rowid = ?').bind(Number(f.get('id')) || 0).first();
+      if (row) { await env.DB.prepare('DELETE FROM vpassuse WHERE pass = ?').bind(row.tok).run(); await env.DB.prepare('DELETE FROM vpass WHERE tok = ?').bind(row.tok).run(); }
+      back += '#show';
+    }
     if (op === 'stop' || op === 'reopen') {   // ⏹ stop a link, or ↩ give a stopped / used-up link one more go (user 2026-10-21); both are noted
       const id = Number(f.get('id')) || 0, row = await env.DB.prepare('SELECT tok, site FROM vpass WHERE rowid = ?').bind(id).first();
       if (row) {
@@ -494,7 +504,7 @@ async function visitsHook(request, env, ctx) {
       await chatSetup(env.DB);
       chats = (await env.DB.prepare('SELECT id, thread, site, sender, kind, page, url, msg, created, done FROM chat ORDER BY id DESC LIMIT 2000').all()).results || [];
       uses = (await env.DB.prepare('SELECT site, part, SUM(n) AS n FROM vuse WHERE day >= ?1 GROUP BY site, part ORDER BY n DESC').bind(vDay(6)).all()).results || [];
-      passes = (await env.DB.prepare('SELECT rowid AS id, tok, site, uses, created FROM vpass WHERE created > ?1 ORDER BY created DESC LIMIT 20').bind(Date.now() - 14 * 864e5).all()).results || [];
+      passes = (await env.DB.prepare(`SELECT rowid AS id, tok, site, uses, created FROM vpass WHERE created > ?1 ORDER BY created DESC LIMIT ${VKEEP}`).bind(Date.now() - 14 * 864e5).all()).results || [];
       puse = (await env.DB.prepare('SELECT pass, at, site, kind, part, secs FROM vpassuse WHERE at > ?1 ORDER BY at').bind(Date.now() - 15 * 864e5).all()).results || [];
     }
     // 🔑 class pass: the lock, the class links, and how many recent devices already have the pass
@@ -606,10 +616,10 @@ ${cpi.lock ? `<p>🔒 <b>The lock is ON</b> (since ${when(cpi.lock)}). A device 
 <p><b>Class links</b> for a new phone, tablet or computer: one tap, no password. Send them only in the class group.</p>
 <p>Year 9: <span id="j9">${esc(cpi.join9)}</span> <button type="button" class="ghost" data-copy="j9">Copy</button><br>Year 8: <span id="j8">${esc(cpi.join8)}</span> <button type="button" class="ghost" data-copy="j8">Copy</button> <span id="jd" class="small"></span></p>
 <form method="post" action="/__visits/joinnew" style="margin:0 0 10px">${hid('k', k)}<button type="submit" class="ghost">Make new class links</button> <span class="small">the old class links stop working; devices that have the pass keep it</span></form>` : ''}
-<h2 id="show">👀 Show links</h2><p>A link for someone outside the class, for example a friend, <b>to show them, not to share</b>. It works <b>only on the first device that opens it</b> (a forwarded copy will not open), it can be opened <b>twice only</b>, then it stops (and after 14 days). Choose a year group’s hub to show the hub page <b>and all its subject sites</b>: each go is one visit of about 6 hours, moving freely between them. While they use it, nothing is saved on their device, they are not counted, and the message buttons are hidden. Below you see, for each go: when it was opened, about how long it lasted on the subject sites, and the pages looked at on each site (the link page tells them you can see this). While they look, the address bar shows a private guest address that works only on their device and stops when the visit ends. <b>Don’t press “Open” yourself to test a link</b>: the first device that presses it is the only one it will work on. (Students use the sites without a password, so someone who deliberately writes down a site’s name could still open it.)</p>
+<h2 id="show">👀 Show links</h2><p>A link for someone outside the class, for example a friend, <b>to show them, not to share</b>. It works <b>only on the first device that opens it</b> (a forwarded copy will not open), it can be opened <b>twice only</b>, then it stops (and after 14 days). Choose a year group’s hub to show the hub page <b>and all its subject sites</b>: each go is one visit of about 6 hours, moving freely between them. While they use it, nothing is saved on their device, they are not counted, and the message buttons are hidden. Below you see, for each go: when it was opened, about how long it lasted on the subject sites, and the pages looked at on each site (the link page tells them you can see this). While they look, the address bar shows a private guest address that works only on their device and stops when the visit ends. Only your <b>3 newest</b> links are kept: making a new one deletes older ones (they stop working), and 🗑 Delete removes one at once. <b>Don’t press “Open” yourself to test a link</b>: the first device that presses it is the only one it will work on. (Students use the sites without a password, so someone who deliberately writes down a site’s name could still open it.)</p>
 <form method="post" action="/__visits/pass" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px">${hid('k', k)}<label for="ps">Show:</label><select id="ps" name="site">${[...Object.keys(VHUBS), ...Object.keys(VSITES)].map(s => `<option value="${s}">${esc(vPassName(s))}</option>`).join('')}</select><button type="submit">Make a show link</button></form>
 ${newLink ? `<div class="newlink"><b>Your new show link</b> (it is shown only now):<br><span id="nl">${esc(newLink)}</span><br><button type="button" id="cp" style="margin-top:8px">Copy the link</button> <span id="cpd" class="small"></span></div>` : ''}
-${passes.length ? `<div class="wrap" style="margin-top:10px"><table style="min-width:0"><tr><th>Link for</th><th>Made</th><th>Goes left</th><th style="text-align:left">Opened (UAE time) and sites visited</th><th></th></tr>${passes.map(p => `<tr><td>${esc(vPassName(p.site))}</td><td>${when(p.created)}</td><td>${p.uses > 0 ? p.uses + ' of 2' : 'used up / stopped'}</td><td class="l">${goes(p.tok)}</td><td>${p.uses > 0 ? `<form method="post" action="/__visits/stop" style="margin:0">${hid('k', k)}${hid('id', p.id)}<button type="submit" class="ghost">Stop it</button></form>` : `<form method="post" action="/__visits/reopen" style="margin:0">${hid('k', k)}${hid('id', p.id)}<button type="submit" class="ghost" title="The same link works one more time">↩ Reopen (1 more go)</button></form>`}</td></tr>`).join('')}</table></div>` : ''}
+${passes.length ? `<div class="wrap" style="margin-top:10px"><table style="min-width:0"><tr><th>Link for</th><th>Made</th><th>Goes left</th><th style="text-align:left">Opened (UAE time) and sites visited</th><th></th></tr>${passes.map(p => `<tr><td>${esc(vPassName(p.site))}</td><td>${when(p.created)}</td><td>${p.uses > 0 ? p.uses + ' of 2' : 'used up / stopped'}</td><td class="l">${goes(p.tok)}</td><td>${p.uses > 0 ? `<form method="post" action="/__visits/stop" style="margin:0">${hid('k', k)}${hid('id', p.id)}<button type="submit" class="ghost">Stop it</button></form>` : `<form method="post" action="/__visits/reopen" style="margin:0">${hid('k', k)}${hid('id', p.id)}<button type="submit" class="ghost" title="The same link works one more time">↩ Reopen (1 more go)</button></form>`}<form method="post" action="/__visits/del" style="margin:6px 0 0" onsubmit="return confirm('Delete this show link? It stops working and its record is removed.')">${hid('k', k)}${hid('id', p.id)}<button type="submit" class="ghost" title="Remove it from the list; it stops working">🗑 Delete</button></form></td></tr>`).join('')}</table></div>` : ''}
 <h2 id="visits">📈 Visits</h2>
 <div class="wrap"><table><tr><th>Day</th>${sites.map(s => `<th>${VSITES[s]}</th>`).join('')}<th>Day total</th></tr>
 ${days.length ? days.map(d => `<tr><td>${nice(d)}</td>${sites.map(s => cell(d, s)).join('')}<td><b>${sum(rows.filter(r => r.day === d))[0]}</b>${used2(d) ? `<small> · ${used2(d)} used</small>` : ''}</td></tr>`).join('') : `<tr><td colspan="${sites.length + 2}">No visits counted yet. Open any site, then refresh this page.</td></tr>`}

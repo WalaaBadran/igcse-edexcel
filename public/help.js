@@ -55,11 +55,13 @@
       ['2026-10-11', 'Some graph and pyramid questions had no figure, and mark schemes were not labelled.', 'The figures now appear with their questions, and mark schemes say "official" or "suggested".']
     ],
     'Year 9 English': [
+      ['2026-10-21', 'Timed full answer (a student flagged it): a quotation with one word missing or changed was only called “not in the text”, so it looked like a mistake by the site.', 'The site now shows the real words and what is different (for example “Missing: being”), and a quotation with a small typing slip still counts, with a spelling note.'],
       ['2026-10-12', '"Check my writing" only recognised a few set words, so correct answers in other words could get a ✗.', 'It now also accepts other ways of saying it (for example shows, portrays, makes us feel, on the other hand, as a result), and the quotation memory game accepts a one-letter spelling slip.'],
       ['2026-10-11', 'The automatic key-word check did not work for most question types.', 'Fixed for every question; it now recognises more methods (tricolon, irony, sensory language, direct address) and \'single\' quotation marks.'],
       ['2026-10-11', 'Writing times looked like official exam timings.', 'Labelled "suggested". Unseen passages are labelled "extra skills practice", not assessment texts.']
     ],
     'Year 8 English': [
+      ['2026-10-21', 'A quotation with one word missing or changed was only called “not in the text”.', 'The site now shows the real words and what is different, and a quotation with a small typing slip still counts, with a spelling note.'],
       ['2026-10-12', '"Check my writing" only recognised a few set words, so correct answers in other words could get a ✗.', 'It now also accepts other ways of saying it (for example shows, portrays, makes us feel, on the other hand, as a result), and the quotation memory game accepts a one-letter spelling slip.'],
       ['2026-10-11', 'The automatic key-word check did not work for most question types.', 'Fixed for every question; it now recognises more methods (tricolon, irony, sensory language, direct address) and \'single\' quotation marks.'],
       ['2026-10-11', 'Writing times looked like official exam timings.', 'Labelled "suggested". Unseen passages are labelled "extra skills practice", not assessment texts.']

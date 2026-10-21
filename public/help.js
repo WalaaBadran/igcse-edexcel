@@ -140,7 +140,7 @@ ${window.ASK_AI ? `<div class="card" style="margin-top:12px"><h3>🤖 Stuck? Ask
     ${o.claude ? '<li>Some writing tasks have an optional button that copies the answer so it can be pasted into Claude (claude.ai) for feedback. Nothing is sent unless someone chooses to do this. Claude accounts are for adults (18+), so a parent should do this step.</li>' : ''}
   </ul></div>
 <div class="card" style="margin-top:12px"><h3>🐞 Found a mistake? Have an idea?</h3>
-  <p style="margin:0">Tap the <b>🚩 Report a mistake</b> button in the bottom corner of any page. Choose 🚩 a mistake, 💡 an idea or 👎 something you don’t like, type your message and tap <b>📨 Send</b>. It goes straight to the parent who made this site, with the page you were on. When they reply, the button flashes blue: open it to read the reply. Your messages stay there on this device. You can also tap 👍 or 👎 at the bottom of a page to say if it helped you.</p></div>
+  <p style="margin:0">Tap the <b>🚩 Report a mistake</b> button in the bottom corner of any page. Choose 🚩 a mistake, 💡 an idea or 👎 something you don’t like, type your message and tap <b>📨 Send</b>. It goes straight to the parent who made this site, with the page you were on. When they reply, the button blinks red and blue: open it to read the reply. Your messages stay there on this device. You can also tap 👍 or 👎 at the bottom of a page to say if it helped you.</p></div>
 ${fixesHTML()}
 <div class="card" id="declaration" style="margin-top:12px"><h3>📜 Declaration</h3>
   <ul style="margin:6px 0 0;padding-left:20px;line-height:1.6" class="small">
@@ -242,7 +242,7 @@ ${fixesHTML()}
         .then(r => r.json().catch(() => ({})).then(j => ({ ok: r.ok, j })))
         .then(({ ok, j }) => {
           send.disabled = false; send.textContent = '📨 Send';
-          if (ok) { ta.value = ''; chatLog(log, j.msgs); lastSeenTop = Math.max(0, ...(j.msgs || []).map(m => m.id)); note.innerHTML = '<b>✅ Sent. Thank you!</b> If the parent who made this site replies, the 🚩 Report a mistake button flashes blue: open it to read the reply.'; if (window.SITE_USE) SITE_USE('tool-msg'); return; }
+          if (ok) { ta.value = ''; chatLog(log, j.msgs); lastSeenTop = Math.max(0, ...(j.msgs || []).map(m => m.id)); note.innerHTML = '<b>✅ Sent. Thank you!</b> If the parent who made this site replies, the 🚩 Report a mistake button blinks red and blue: open it to read the reply.'; if (window.SITE_USE) SITE_USE('tool-msg'); return; }
           note.textContent = j.error || 'It did not send. Please try again in a minute.';
         })
         .catch(() => { note.textContent = 'It did not send (no internet?). Your text is still here: try again when you are online.'; send.disabled = false; send.textContent = '📨 Send'; });
@@ -272,7 +272,7 @@ ${fixesHTML()}
     }, 10000);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkReplies(); });
   }
-  function paintReplies() {   // a new reply: the side tab flashes blue with a badge until the chat is opened
+  function paintReplies() {   // a new reply: the button blinks red and blue with a badge until the chat is opened
     const t = document.querySelector('body > .chattab'); if (!t) return;
     const open = !!document.querySelector('body > .chatside');
     t.classList.toggle('chatnew', newReplies > 0 && !open);
@@ -318,7 +318,7 @@ ${fixesHTML()}
      fold under "More" so the box stays short on phones (2026-10-19). [date, text, only on sites whose title starts with this] */
   const NEWS = [
     ['2026-10-21', '✅ Thank you to the student who flagged a mistake in ⏱️ Timed full answer (question 7)! It is fixed: when a quotation is nearly right, the site now shows the real words and what is different.', 'Year 9 English'],
-    ['2026-10-21', '🚩 NEW: the Report a mistake button in the bottom corner of every page: tell us about a mistake, an idea or something you don’t like. When we reply, the button flashes blue. Tap 👍 or 👎 at the bottom to say if a page helped.'],
+    ['2026-10-21', '🚩 NEW: the Report a mistake button in the bottom corner of every page: tell us about a mistake, an idea or something you don’t like. When we reply, the button blinks red and blue. Tap 👍 or 👎 at the bottom to say if a page helped.'],
     ['2026-10-20', '🌸 NEW in 🎯 Practise: PETAL step by step. Practise each part of PETAL on its own with marking, including 🔗 L+: linking to Orwell’s intentions and the context.', 'Year 9 English'],
     ['2026-10-20', '🤖 NEW: an AI helper. Stuck on something? Tap 🤖 Ask AI at the top of the screen and ask about the page you are on.', 'Year '],
     ['2026-10-19', '🎟 NEW: Golden Ticket tasks. The school’s extra challenge tasks: print or do them, then hand them in to your teacher (in the menu).'],
@@ -501,8 +501,11 @@ ${fixesHTML()}
 .chattab .chatcount { position: absolute; top: -8px; right: -6px; min-width: 24px; height: 24px; padding: 0 6px; box-sizing: border-box; border-radius: 12px; background: #DC2626; color: #fff; border: 2px solid #fff; font-size: 13px; font-weight: 800; line-height: 20px; text-align: center; }
 .chattab:focus-visible { outline: 3px solid #93C5FD; outline-offset: 3px; }
 .chattab.chatnew { animation: chatflash 1.1s ease-in-out infinite; }
-@keyframes chatflash { 0%, 100% { background: #1D4ED8; box-shadow: 0 0 0 0 rgba(37,99,235,.75); } 50% { background: #3B82F6; box-shadow: 0 0 0 14px rgba(37,99,235,0); } }
-@media (prefers-reduced-motion: reduce) { .chattab.chatnew { animation: none; background: #2563EB; outline: 3px solid #93C5FD; } }
+@keyframes chatflash { 0%, 49% { background: #1D4ED8; box-shadow: 0 0 0 0 rgba(37,99,235,.75); } 50%, 100% { background: #DC2626; box-shadow: 0 0 0 12px rgba(220,38,38,0); } }   /* blinks red and blue (user 2026-10-21) */
+/* computers with "animation effects" turned off (prefers-reduced-motion) still blink, by colour only, nothing moves (user 2026-10-21:
+   "the icon is not blinking as requested") */
+@keyframes chatblink { 0%, 49% { background: #1D4ED8; } 50%, 100% { background: #DC2626; } }
+@media (prefers-reduced-motion: reduce) { .chattab.chatnew { animation: chatblink 1.4s linear infinite; outline: 3px solid #93C5FD; } }
 .chatside { position: fixed; z-index: 59; right: max(8px, env(safe-area-inset-right, 0px)); bottom: calc(var(--chatnav, 0px) + 78px + env(safe-area-inset-bottom, 0px)); width: min(400px, calc(100vw - 16px)); max-height: calc(100vh - var(--chatnav, 0px) - 150px); overflow-y: auto; box-sizing: border-box; padding: 12px 14px; border-radius: 16px; border: 2px solid var(--brand, #1D4ED8); background: var(--card, #fff); color: var(--ink, #1d2433); box-shadow: 0 12px 40px rgba(0,0,0,.25); text-align: left; }
 /* phones (portrait, or landscape with a short screen): the chat opens full screen; tablets and laptops keep the pop-up beside the page */
 @media (max-width: 600px), (max-width: 950px) and (max-height: 500px) {

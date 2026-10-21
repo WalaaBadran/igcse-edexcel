@@ -132,7 +132,7 @@ ${window.ASK_AI ? `<div class="card" style="margin-top:12px"><h3>🤖 Stuck? Ask
     ${o.claude ? '<li>Some writing tasks have an optional button that copies the answer so it can be pasted into Claude (claude.ai) for feedback. Nothing is sent unless someone chooses to do this. Claude accounts are for adults (18+), so a parent should do this step.</li>' : ''}
   </ul></div>
 <div class="card" style="margin-top:12px"><h3>🐞 Found a mistake? Have an idea?</h3>
-  <p style="margin:0">Tap <b>🚩 Flag a mistake</b> or <b>💬 Ideas &amp; feedback</b> at the bottom of the page, type your message and tap <b>📨 Send</b>. It goes straight to the parent who made this site, with the page you were on. If they reply, you see it in the same place on this device. You can also tap 👍 or 👎 to say if a page helped you.</p></div>
+  <p style="margin:0">Tap the <b>🚩 Report a mistake</b> tab on the right side of any page. Choose 🚩 a mistake, 💡 an idea or 👎 something you don’t like, type your message and tap <b>📨 Send</b>. It goes straight to the parent who made this site, with the page you were on. When they reply, the tab flashes blue: open it to read the reply. Your messages stay there on this device. You can also tap 👍 or 👎 at the bottom of a page to say if it helped you.</p></div>
 ${fixesHTML()}
 <div class="card" id="declaration" style="margin-top:12px"><h3>📜 Declaration</h3>
   <ul style="margin:6px 0 0;padding-left:20px;line-height:1.6" class="small">
@@ -177,22 +177,40 @@ ${fixesHTML()}
     if (top) { put('chat-read', String(top)); newReplies = 0; sset('chat-new', '0'); paintReplies(); }
     box.scrollTop = box.scrollHeight;
   }
-  function chat(btn, mode) {   // mode: 'mistake' (🚩 button), 'dislike' (after 👎) or '' (💬 button)
-    const out = btn.closest('.flagbar').querySelector('.flagmsg');
-    if (out.querySelector('.flagpanel') && out.dataset.mode === mode) { out.innerHTML = ''; return; }   // tap again to close
-    out.dataset.mode = mode;
-    let kind = mode === 'mistake' || mode === 'dislike' ? mode : '';
-    const chips = mode === 'mistake' ? '' : `<div class="chatkinds" role="group" aria-label="What is it about?">${['idea', 'dislike', 'mistake'].map(k => `<button type="button" class="chatkind" data-k="${k}" aria-pressed="${kind === k}">${KINDS[k]}</button>`).join('')}</div>`;
-    out.innerHTML = `<div class="flagpanel"><b>${mode === 'mistake' ? '🚩 Report a mistake' : '💬 Ideas & feedback'}</b>
-      <div class="chatlog" aria-live="polite"></div>${chips}
-      <label class="small" style="display:block;margin:6px 0 4px" for="chattext">${mode === 'mistake' ? 'What’s wrong? (for example: "Question 3: the answer should be 1497")' : 'How could this site be better? Or what don’t you like?'}</label>
+  /* 🚩 Report a mistake, as a chat beside the page (user 2026-10-21: "put flag a mistake ... as a chat box like flag/report a
+     mistake to creator pop up at the side of the page; remove from the bottom, it is not noticeable there; make it flash blue
+     like when we receive chat message till the student opens it"). A tab on the right edge of every page opens the pop-up:
+     🚩 a mistake, 💡 an idea, 👎 something they don't like; the conversation and the parent's replies are kept. A new reply makes
+     the tab flash blue, with a badge, until the student opens it. */
+  function chatTab() {
+    if (GUEST || document.querySelector('body > .chattab')) return;
+    const t = document.createElement('button'); t.type = 'button'; t.className = 'chattab';
+    t.setAttribute('aria-label', 'Report a mistake, or send an idea, to the person who made this site');
+    t.innerHTML = '<span class="chattab-t">🚩 Report a mistake</span>';
+    t.onclick = () => (document.querySelector('body > .chatside') ? chatClose() : chat(''));
+    document.body.appendChild(t);
+    paintReplies();
+  }
+  function chatClose() { const w = document.querySelector('body > .chatside'); if (w) w.remove(); }
+  function chat(mode) {   // mode: '' (the tab: the student chooses), 'mistake', or 'dislike' (after 👎)
+    chatClose();
+    let kind = mode;   // nothing is chosen until the student taps, unless they came from 👎
+    const w = document.createElement('section'); w.className = 'chatside'; w.setAttribute('role', 'dialog'); w.setAttribute('aria-label', 'Message the person who made this site');
+    w.innerHTML = `<div class="chathead"><b>🚩 Report a mistake · 💬 Chat</b><button type="button" class="chatx" aria-label="Close">✕</button></div>
+      <p class="small muted" style="margin:2px 0 6px">To the parent who made this site. Your messages and the replies stay here.</p>
+      <div class="chatlog" aria-live="polite"></div>
+      <div class="chatkinds" role="group" aria-label="What is it about?">${['mistake', 'idea', 'dislike'].map(k => `<button type="button" class="chatkind" data-k="${k}" aria-pressed="${kind === k}">${KINDS[k]}</button>`).join('')}</div>
+      <label class="small" style="display:block;margin:8px 0 4px" for="chattext">Type your message (for a mistake, say where: for example "Question 3: the answer should be 1497")</label>
       <textarea id="chattext" class="flagtext" rows="3" maxlength="1000" placeholder="Type here…"></textarea>
       <div class="flagbtns"><button type="button" class="flagsend">📨 Send</button></div>
-      <p class="small muted flagnote" style="margin:6px 0 0">It goes straight to the parent who made this site, with the page you are on. You may get a reply here, on this device. Please don't write your name or other personal details.</p></div>`;
-    const log = out.querySelector('.chatlog'), ta = out.querySelector('.flagtext'), note = out.querySelector('.flagnote'), send = out.querySelector('.flagsend');
-    out.querySelectorAll('.chatkind').forEach(c => c.onclick = () => { kind = c.dataset.k; out.querySelectorAll('.chatkind').forEach(x => x.setAttribute('aria-pressed', x === c)); ta.focus(); });
+      <p class="small muted flagnote" style="margin:6px 0 0">It goes with the page you are on. You may get a reply here, on this device. Please don't write your name or other personal details.</p>`;
+    document.body.appendChild(w);
+    const log = w.querySelector('.chatlog'), ta = w.querySelector('.flagtext'), note = w.querySelector('.flagnote'), send = w.querySelector('.flagsend');
+    w.querySelector('.chatx').onclick = chatClose;
+    w.addEventListener('keydown', e => { if (e.key === 'Escape') chatClose(); });
+    w.querySelectorAll('.chatkind').forEach(c => c.onclick = () => { kind = c.dataset.k; w.querySelectorAll('.chatkind').forEach(x => x.setAttribute('aria-pressed', x === c)); ta.focus(); });
     const t0 = chatId(false);
-    if (t0) fetch('/api/chat?t=' + encodeURIComponent(t0)).then(r => r.json()).then(j => chatLog(log, j.msgs)).catch(() => {});
+    if (t0) fetch('/api/chat?t=' + encodeURIComponent(t0)).then(r => r.json()).then(j => { chatLog(log, j.msgs); lastSeenTop = Math.max(0, ...(j.msgs || []).map(m => m.id)); }).catch(() => {});
     send.onclick = () => {
       const text = ta.value.trim();
       if (text.length < 2) { note.textContent = 'Please type your message first.'; ta.focus(); return; }
@@ -202,24 +220,23 @@ ${fixesHTML()}
         .then(r => r.json().catch(() => ({})).then(j => ({ ok: r.ok, j })))
         .then(({ ok, j }) => {
           send.disabled = false; send.textContent = '📨 Send';
-          if (ok) { ta.value = ''; chatLog(log, j.msgs); note.innerHTML = '<b>✅ Sent. Thank you!</b> If the parent who made this site replies, you will see it here, on this device.'; if (window.SITE_USE) SITE_USE('tool-msg'); return; }
+          if (ok) { ta.value = ''; chatLog(log, j.msgs); lastSeenTop = Math.max(0, ...(j.msgs || []).map(m => m.id)); note.innerHTML = '<b>✅ Sent. Thank you!</b> If the parent who made this site replies, the 🚩 tab flashes blue: open it to read the reply.'; if (window.SITE_USE) SITE_USE('tool-msg'); return; }
           note.textContent = j.error || 'It did not send. Please try again in a minute.';
         })
         .catch(() => { note.textContent = 'It did not send (no internet?). Your text is still here: try again when you are online.'; send.disabled = false; send.textContent = '📨 Send'; });
     };
     ta.focus();
   }
-  // a new reply? checked when a page opens (at most every 2 minutes); shown on the 💬 button and at the top of the page
   // replies appear without refreshing (user 2026-10-21: "make the reply appear instantly if i solved instantly"): checked when a
-  // page opens, every 10 s while the 💬 panel is open (the reply is added to the conversation), every 30 s while the page is on
+  // page opens, every 10 s while the chat is open (the reply is added to the conversation), every 30 s while the page is on
   // screen, and at once when the student comes back to the tab. Only devices that have sent a message check.
   let lastSeenTop = 0;
   function checkReplies() {
     const t = chatId(false); if (GUEST || !t) return;
     fetch('/api/chat?t=' + encodeURIComponent(t)).then(r => r.json()).then(j => {
-      const msgs = j.msgs || [], log = document.querySelector('#app > .flagbar .flagpanel .chatlog');
+      const msgs = j.msgs || [], log = document.querySelector('body > .chatside .chatlog');
       const top = Math.max(0, ...msgs.map(m => m.id));
-      if (log) { if (top !== lastSeenTop) chatLog(log, msgs); lastSeenTop = top; return; }   // panel open: show it in the conversation
+      if (log) { if (top !== lastSeenTop) chatLog(log, msgs); lastSeenTop = top; return; }   // chat open: show it in the conversation
       const read = +(get('chat-read') || 0);
       newReplies = msgs.filter(m => m.from === 'owner' && m.id > read).length; sset('chat-new', String(newReplies)); paintReplies();
     }).catch(() => {});
@@ -229,25 +246,15 @@ ${fixesHTML()}
     setInterval(() => {
       if (document.visibilityState !== 'visible' || !chatId(false)) return;
       tick++;
-      if (document.querySelector('#app > .flagbar .flagpanel .chatlog') || tick % 3 === 0) checkReplies();
+      if (document.querySelector('body > .chatside') || tick % 3 === 0) checkReplies();
     }, 10000);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkReplies(); });
   }
-  function paintReplies() {
-    const app = document.getElementById('app'); if (!app) return;
-    const b = app.querySelector(':scope > .flagbar .ideabtn');
-    if (b) b.innerHTML = '💬 Ideas &amp; feedback' + (newReplies ? ` <span class="chatbadge">${newReplies} new ${newReplies === 1 ? 'reply' : 'replies'}</span>` : '');
-    // a floating notice near the bottom of the screen, seen at once on any page (inside the page it was pushed down by
-    // the video and teacher cards); ✕ hides it until the next page
-    let r = document.querySelector('body > .replybar');
-    if (!newReplies || sget('reply-hide') === String(newReplies) + location.hash) { if (r) r.remove(); return; }
-    if (!r) {
-      r = document.createElement('div'); r.className = 'replybar'; r.setAttribute('role', 'status');
-      r.innerHTML = '<span>💬 <b>The parent who made this site replied to your message.</b></span><button type="button" class="replyread">Read it</button><button type="button" class="replyx" aria-label="Hide this notice">✕</button>';
-      r.querySelector('.replyread').onclick = () => { const i = document.querySelector('#app > .flagbar .ideabtn'); if (i) { i.scrollIntoView({ behavior: 'smooth', block: 'center' }); chat(i, ''); } r.remove(); };
-      r.querySelector('.replyx').onclick = () => { sset('reply-hide', String(newReplies) + location.hash); r.remove(); };
-      document.body.appendChild(r);
-    }
+  function paintReplies() {   // a new reply: the side tab flashes blue with a badge until the chat is opened
+    const t = document.querySelector('body > .chattab'); if (!t) return;
+    t.classList.toggle('flash', newReplies > 0);
+    t.querySelector('.chattab-t').textContent = newReplies ? `💬 ${newReplies === 1 ? 'New reply!' : newReplies + ' new replies!'}` : '🚩 Report a mistake';
+    t.setAttribute('aria-label', newReplies ? 'You have a new reply: open the chat' : 'Report a mistake, or send an idea, to the person who made this site');
   }
   /* storage that never breaks the page (private mode can block it) */
   const get = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
@@ -283,7 +290,7 @@ ${fixesHTML()}
      fold under "More" so the box stays short on phones (2026-10-19). [date, text, only on sites whose title starts with this] */
   const NEWS = [
     ['2026-10-21', '✅ Thank you to the student who flagged a mistake in ⏱️ Timed full answer (question 7)! It is fixed: when a quotation is nearly right, the site now shows the real words and what is different.', 'Year 9 English'],
-    ['2026-10-21', '💬 NEW: tell us your ideas or what you don’t like with 💬 Ideas & feedback at the bottom of every page, and see the reply there. Tap 👍 or 👎 to say if a page helped.'],
+    ['2026-10-21', '🚩 NEW: the Report a mistake tab on the right of every page: tell us about a mistake, an idea or something you don’t like. When we reply, the tab flashes blue. Tap 👍 or 👎 at the bottom to say if a page helped.'],
     ['2026-10-20', '🌸 NEW in 🎯 Practise: PETAL step by step. Practise each part of PETAL on its own with marking, including 🔗 L+: linking to Orwell’s intentions and the context.', 'Year 9 English'],
     ['2026-10-20', '🤖 NEW: an AI helper. Stuck on something? Tap 🤖 Ask AI at the top of the screen and ask about the page you are on.', 'Year '],
     ['2026-10-19', '🎟 NEW: Golden Ticket tasks. The school’s extra challenge tasks: print or do them, then hand them in to your teacher (in the menu).'],
@@ -376,8 +383,7 @@ ${fixesHTML()}
       d.innerHTML = (canSpeak ? `<button type="button" class="readbtn">${speaking ? '⏹ Stop reading' : '🔊 Read aloud'}</button>` : '')
         + `<button type="button" class="bigbtn" aria-pressed="${bigOn()}">A+ Bigger text</button>`
         + (GUEST ? '<p class="guestline small">👀 Guest view: nothing is saved on this device.</p>'
-          : `<button type="button" class="flagbtn">🚩 Flag a mistake</button><button type="button" class="ideabtn">💬 Ideas &amp; feedback</button>`
-            + `<div class="ratebar small">${sget('rated:' + partNow()) ? 'Thank you for your answer!' : 'Was this page helpful? <button type="button" class="rateup" aria-label="Yes, it was helpful">👍</button><button type="button" class="ratedn" aria-label="No, it was not helpful">👎</button>'}</div>`)
+          : `<div class="ratebar small">${sget('rated:' + partNow()) ? 'Thank you for your answer!' : 'Was this page helpful? <button type="button" class="rateup" aria-label="Yes, it was helpful">👍</button><button type="button" class="ratedn" aria-label="No, it was not helpful">👎</button>'}</div>`)
         + `<div class="flagmsg small" role="status"></div>`
         + (YR ? `<a class="yrlink small" href="https://year${YR}.deirarevise.workers.dev/">🏠 All Year ${YR} subjects</a>` : '')
         + (SHARE ? `<p class="copyline">© 2026. A free study site made voluntarily by a parent. Exam questions and mark schemes © Pearson Education Ltd, used for free, non-commercial practice; video links go to Corbettmaths. You are welcome to share this link.</p>`
@@ -385,21 +391,19 @@ ${fixesHTML()}
         + `<p class="dedication" dir="rtl" lang="ar"><b>الحمد لله الذي بنعمته تتمّ الصالحات.<br>بفضل الله وتوفيقه تمّ هذا العمل، ليكون صدقةً جاريةً عنّي وعن والديّ الكريمين.<br>نسأل الله العليّ القدير أن يجعل فيه النفع والبركة لكلّ طالب علمٍ يمرّ من هنا، وأن يتقبّله منّا بقبولٍ حسن، ويجعله في ميزان حسناتنا جميعًا.<br>ولا تنسوني وأولادي من صالح دعائكم. 🤲</b></p>`
         + `<p class="dedication en" lang="en"><b>All praise is due to Allah, by whose grace good deeds are completed.<br>By the grace of Allah and His help, this work was completed, as an ongoing charity (sadaqah jariyah) for me and my dear parents.<br>We ask Allah, the Most High, the Almighty, to make it useful and blessed for every student who passes by here, to accept it from us, and to place it in the scale of good deeds for all of us.<br>Please remember me and my children in your prayers. 🤲</b></p>`;
       if (!GUEST) {
-        d.querySelector('.flagbtn').onclick = e => chat(e.currentTarget, 'mistake');
-        d.querySelector('.ideabtn').onclick = e => chat(e.currentTarget, '');
         // 👍/👎 one tap per part of the site per visit: only totals go to the owner's page (no names, no device number)
         const rb = d.querySelector('.ratebar'), rate = up => {
           sset('rated:' + partNow(), up ? 'up' : 'dn'); if (window.SITE_USE) SITE_USE((up ? 'up-' : 'dn-') + partNow());
           rb.innerHTML = up ? 'Thank you! 👍' : 'Thank you for telling us. <button type="button" class="ratewhy">Tell us what to improve</button>';
-          const w = rb.querySelector('.ratewhy'); if (w) w.onclick = () => chat(w, 'dislike');
+          const w = rb.querySelector('.ratewhy'); if (w) w.onclick = () => chat('dislike');
         };
         if (rb.querySelector('.rateup')) { rb.querySelector('.rateup').onclick = () => rate(true); rb.querySelector('.ratedn').onclick = () => rate(false); }
       }
       d.querySelector('.bigbtn').onclick = e => { setBig(!bigOn()); e.currentTarget.setAttribute('aria-pressed', bigOn()); };
       if (canSpeak) d.querySelector('.readbtn').onclick = e => speak(e.currentTarget);
       app.appendChild(d);
-      paintReplies();
     }
+    chatTab();
     const home = !location.hash.replace(/^#\/?/, '');
     if (home && (TERMS || window.YEAR_PLAN) && !PLAIN && !app.querySelector(':scope > .termbar')) {
       const t = document.createElement('div'); t.className = 'termbar card';
@@ -440,8 +444,6 @@ ${fixesHTML()}
 .flagbar .ratebar .ratewhy { font-size: 14px; }
 .flagbar .guestline { flex-basis: 100%; text-align: center; margin: 0; font-weight: 600; }
 .chatkinds { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.flagpanel .chatkind { padding: 6px 12px; font-size: 14px; }
-.flagpanel .chatkind[aria-pressed="true"] { border-color: var(--brand, #1D4ED8); background: color-mix(in srgb, var(--brand, #1D4ED8) 14%, transparent); color: inherit; font-weight: 700; }
 .chatlog { display: grid; gap: 6px; margin: 8px 0 0; max-height: 280px; overflow-y: auto; }
 .chatlog:empty { display: none; }
 .chatlog .cb { max-width: 85%; padding: 8px 12px; border-radius: 14px; overflow-wrap: anywhere; }
@@ -449,10 +451,18 @@ ${fixesHTML()}
 .chatlog .me { justify-self: end; background: color-mix(in srgb, var(--brand, #1D4ED8) 14%, transparent); border-bottom-right-radius: 4px; }
 .chatlog .them { justify-self: start; background: color-mix(in srgb, var(--muted, #5B6475) 14%, transparent); border-bottom-left-radius: 4px; }
 .chatbadge { display: inline-block; margin-left: 4px; padding: 1px 8px; border-radius: 999px; background: var(--brand, #1D4ED8); color: #fff; font-size: 12px; font-weight: 700; }
-.replybar { position: fixed; z-index: 60; left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px)); bottom: calc(84px + env(safe-area-inset-bottom, 0px)); max-width: 560px; margin: 0 auto; padding: 10px 12px 10px 14px; border-radius: 14px; border: 2px solid var(--brand, #1D4ED8); background: var(--card, #fff); color: var(--ink, #1d2433); box-shadow: 0 8px 28px rgba(0,0,0,.18); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.replybar span { flex: 1 1 200px; }
-.replybar .replyread { padding: 6px 14px; border-radius: 999px; border: 0; background: var(--brand, #1D4ED8); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
-.replybar .replyx { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line, #CBD5E1); background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.chattab { position: fixed; z-index: 58; right: 0; top: 50%; transform: translateY(-50%); writing-mode: vertical-rl; padding: 14px 7px; border: 0; border-radius: 12px 0 0 12px; background: var(--brand, #1D4ED8); color: #fff; font: inherit; font-size: 14px; font-weight: 700; letter-spacing: .02em; cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,.2); }
+.chattab:focus-visible { outline: 3px solid #93C5FD; outline-offset: 2px; }
+.chattab.flash { animation: chatflash 1.1s ease-in-out infinite; }
+@keyframes chatflash { 0%, 100% { background: #1D4ED8; box-shadow: 0 0 0 0 rgba(37,99,235,.7); } 50% { background: #60A5FA; box-shadow: 0 0 0 10px rgba(37,99,235,0); } }
+@media (prefers-reduced-motion: reduce) { .chattab.flash { animation: none; background: #2563EB; outline: 3px solid #93C5FD; } }
+.chatside { position: fixed; z-index: 59; right: max(8px, env(safe-area-inset-right, 0px)); bottom: calc(84px + env(safe-area-inset-bottom, 0px)); width: min(400px, calc(100vw - 16px)); max-height: calc(100vh - 150px); overflow-y: auto; box-sizing: border-box; padding: 12px 14px; border-radius: 16px; border: 2px solid var(--brand, #1D4ED8); background: var(--card, #fff); color: var(--ink, #1d2433); box-shadow: 0 12px 40px rgba(0,0,0,.25); text-align: left; }
+.chatside .chathead { display: flex; align-items: center; gap: 8px; }
+.chatside .chathead b { flex: 1; }
+.chatside .chatx { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line, #CBD5E1); background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.chatside textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 16px; padding: 8px; border-radius: 8px; border: 1px solid var(--line, #CBD5E1); background: transparent; color: inherit; }
+.chatside .chatkind { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line, #CBD5E1); background: transparent; color: inherit; font: inherit; font-size: 14px; cursor: pointer; }
+.chatside .chatkind[aria-pressed="true"] { border-color: var(--brand, #1D4ED8); background: color-mix(in srgb, var(--brand, #1D4ED8) 14%, transparent); font-weight: 700; }
 .flagbar .dedication { flex-basis: 100%; text-align: center; font-size: 12.5px; line-height: 1.8; margin: 10px 8px 4px; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--brand, #0E8F6E) 8%, transparent); font-family: 'Segoe UI', Tahoma, 'Noto Naskh Arabic', sans-serif; }
 .flagbar .dedication.en { font-size: 11.5px; line-height: 1.6; margin-top: 4px; }
 .flagbar .copyline { flex-basis: 100%; text-align: center; font-size: 12px; line-height: 1.4; color: var(--muted, #5B6475); margin: 6px 8px 0; }

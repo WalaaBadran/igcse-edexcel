@@ -477,6 +477,7 @@ select{font:inherit;padding:7px;border-radius:8px}.newlink{background:var(--card
 .nav{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 8px}.nav a{padding:4px 12px;border-radius:999px;background:var(--card);text-decoration:none;color:inherit;border:1px solid var(--line)}
 td.l{text-align:left;white-space:normal}</style></head><body>
 <h1>📈 Visits${waiting ? ` <small style="color:var(--brand)">· 💬 ${waiting} new</small>` : ''}</h1>
+<p style="margin:0 0 8px" class="small">🔄 Updated at <b>${new Date(Date.now() + 4 * 3600e3).toISOString().slice(11, 19)}</b> (UAE time). This page refreshes by itself every 30 seconds while it is on screen, and as soon as you come back to it. <a href="#" id="rnow">↻ Refresh now</a></p>
 <div class="nav"><a href="#msgs">💬 Messages${waiting ? ` (${waiting} new)` : ''}</a><a href="#fb">💡 Ideas &amp; dislikes</a><a href="#use">📊 What they use</a><a href="#show">👀 Show links</a><a href="#visits">📈 Visits</a></div><p>Each box: how many <b>devices</b> opened that site that day (UAE time). A device counts once a day per site, however many times it opens it. <small>"· 3 used"</small> = how many of them really used it (2 minutes or more of tapping, typing, scrolling, watching a video or listening). Day total = all the sites' boxes for that day added up (user 2026-10-20: "total views for each day"); a student who used 3 sites counts 3 there. Total row = each site's days added up. Counting started on 19 Oct 2026. Only you have this link: please keep it private.</p>
 <p id="me" style="color:var(--brand);font-weight:600"></p>
 <script>(function () { var own = false; try { own = localStorage.getItem('vown') === '1'; } catch (e) {}
@@ -507,10 +508,11 @@ ${days.length ? days.map(d => `<tr><td>${nice(d)}</td>${sites.map(s => cell(d, s
 ${devs.length ? devs.map(r => `<tr><td>${nice(r.day)}</td><td>${VSITES[r.site] || r.site}</td><td>${r.at || '<small>before times were saved</small>'}</td><td>${r.kind || '<small>not saved</small>'}</td><td>${mins(r)}</td><td>${r.pages || 1}</td></tr>`).join('') : '<tr><td colspan="6">No devices yet.</td></tr>'}</table></div>
 <p style="margin-top:12px">Open this page once on each phone or laptop you use, and your visits on it stop being counted (numbers up to 19 Oct may include yours). A phone in private mode, or the same phone in a different browser, counts as another device. Cloudflare Web Analytics (dash.cloudflare.com) also has visit numbers; it counts everyone, you too.</p>
 <script>(function () {   // refresh every 30 seconds, but never while you are typing a reply
-  setInterval(function () {
-    var busy = [].some.call(document.querySelectorAll('textarea'), function (t) { return t.value.trim() || t === document.activeElement; });
-    if (!busy && document.visibilityState === 'visible') location.reload();
-  }, 30000);
+  var busy = function () { return [].some.call(document.querySelectorAll('textarea'), function (t) { return t.value.trim() || t === document.activeElement; }); };
+  var fresh = function () { location.reload(); };
+  setInterval(function () { if (!busy() && document.visibilityState === 'visible') fresh(); }, 30000);
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible' && !busy()) fresh(); });   // coming back to this tab
+  var rn = document.getElementById('rnow'); if (rn) rn.onclick = function (e) { e.preventDefault(); fresh(); };
   document.addEventListener('click', function (e) {   // a ready answer fills the reply box, to send as it is or edit
     var b = e.target.closest && e.target.closest('[data-q]'); if (!b) return;
     var ta = b.closest('form').querySelector('textarea'); ta.value = b.getAttribute('data-q'); ta.focus();

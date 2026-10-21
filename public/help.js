@@ -132,7 +132,7 @@ ${window.ASK_AI ? `<div class="card" style="margin-top:12px"><h3>🤖 Stuck? Ask
     ${o.claude ? '<li>Some writing tasks have an optional button that copies the answer so it can be pasted into Claude (claude.ai) for feedback. Nothing is sent unless someone chooses to do this. Claude accounts are for adults (18+), so a parent should do this step.</li>' : ''}
   </ul></div>
 <div class="card" style="margin-top:12px"><h3>🐞 Found a mistake? Have an idea?</h3>
-  <p style="margin:0">Tap the <b>🚩 Report a mistake</b> tab on the right side of any page. Choose 🚩 a mistake, 💡 an idea or 👎 something you don’t like, type your message and tap <b>📨 Send</b>. It goes straight to the parent who made this site, with the page you were on. When they reply, the tab flashes blue: open it to read the reply. Your messages stay there on this device. You can also tap 👍 or 👎 at the bottom of a page to say if it helped you.</p></div>
+  <p style="margin:0">Tap the <b>🚩 Report a mistake</b> button in the bottom corner of any page. Choose 🚩 a mistake, 💡 an idea or 👎 something you don’t like, type your message and tap <b>📨 Send</b>. It goes straight to the parent who made this site, with the page you were on. When they reply, the button flashes blue: open it to read the reply. Your messages stay there on this device. You can also tap 👍 or 👎 at the bottom of a page to say if it helped you.</p></div>
 ${fixesHTML()}
 <div class="card" id="declaration" style="margin-top:12px"><h3>📜 Declaration</h3>
   <ul style="margin:6px 0 0;padding-left:20px;line-height:1.6" class="small">
@@ -189,9 +189,18 @@ ${fixesHTML()}
     t.innerHTML = '<span class="chattab-t">🚩 Report a mistake</span>';
     t.onclick = () => (document.querySelector('body > .chatside') ? chatClose() : chat(''));
     document.body.appendChild(t);
+    chatPlace(); addEventListener('resize', chatPlace);
     paintReplies();
   }
-  function chatClose() { const w = document.querySelector('body > .chatside'); if (w) w.remove(); }
+  function chatPlace() {   // sit just above a menu fixed at the bottom of the screen (the phone menu), if there is one
+    let h = 0;
+    for (const n of document.querySelectorAll('nav, .bar')) {
+      if (getComputedStyle(n).position !== 'fixed') continue;
+      const r = n.getBoundingClientRect(); if (r.bottom >= innerHeight - 2 && r.height < 200) h = Math.max(h, r.height);
+    }
+    document.documentElement.style.setProperty('--chatnav', h + 'px');
+  }
+  function chatClose() { const w = document.querySelector('body > .chatside'); if (w) w.remove(); paintReplies(); }
   function chat(mode) {   // mode: '' (the tab: the student chooses), 'mistake', or 'dislike' (after 👎)
     chatClose();
     let kind = mode;   // nothing is chosen until the student taps, unless they came from 👎
@@ -204,7 +213,7 @@ ${fixesHTML()}
       <textarea id="chattext" class="flagtext" rows="3" maxlength="1000" placeholder="Type here…"></textarea>
       <div class="flagbtns"><button type="button" class="flagsend">📨 Send</button></div>
       <p class="small muted flagnote" style="margin:6px 0 0">It goes with the page you are on. You may get a reply here, on this device. Please don't write your name or other personal details.</p>`;
-    document.body.appendChild(w);
+    document.body.appendChild(w); paintReplies();
     const log = w.querySelector('.chatlog'), ta = w.querySelector('.flagtext'), note = w.querySelector('.flagnote'), send = w.querySelector('.flagsend');
     w.querySelector('.chatx').onclick = chatClose;
     w.addEventListener('keydown', e => { if (e.key === 'Escape') chatClose(); });
@@ -220,7 +229,7 @@ ${fixesHTML()}
         .then(r => r.json().catch(() => ({})).then(j => ({ ok: r.ok, j })))
         .then(({ ok, j }) => {
           send.disabled = false; send.textContent = '📨 Send';
-          if (ok) { ta.value = ''; chatLog(log, j.msgs); lastSeenTop = Math.max(0, ...(j.msgs || []).map(m => m.id)); note.innerHTML = '<b>✅ Sent. Thank you!</b> If the parent who made this site replies, the 🚩 tab flashes blue: open it to read the reply.'; if (window.SITE_USE) SITE_USE('tool-msg'); return; }
+          if (ok) { ta.value = ''; chatLog(log, j.msgs); lastSeenTop = Math.max(0, ...(j.msgs || []).map(m => m.id)); note.innerHTML = '<b>✅ Sent. Thank you!</b> If the parent who made this site replies, the 🚩 Report a mistake button flashes blue: open it to read the reply.'; if (window.SITE_USE) SITE_USE('tool-msg'); return; }
           note.textContent = j.error || 'It did not send. Please try again in a minute.';
         })
         .catch(() => { note.textContent = 'It did not send (no internet?). Your text is still here: try again when you are online.'; send.disabled = false; send.textContent = '📨 Send'; });
@@ -252,8 +261,9 @@ ${fixesHTML()}
   }
   function paintReplies() {   // a new reply: the side tab flashes blue with a badge until the chat is opened
     const t = document.querySelector('body > .chattab'); if (!t) return;
-    t.classList.toggle('flash', newReplies > 0);
-    t.querySelector('.chattab-t').textContent = newReplies ? `💬 ${newReplies === 1 ? 'New reply!' : newReplies + ' new replies!'}` : '🚩 Report a mistake';
+    const open = !!document.querySelector('body > .chatside');
+    t.classList.toggle('chatnew', newReplies > 0 && !open);
+    t.querySelector('.chattab-t').textContent = open ? '✕ Close' : newReplies ? `💬 ${newReplies === 1 ? 'New reply! Tap to read' : newReplies + ' new replies! Tap to read'}` : '🚩 Report a mistake';
     t.setAttribute('aria-label', newReplies ? 'You have a new reply: open the chat' : 'Report a mistake, or send an idea, to the person who made this site');
   }
   /* storage that never breaks the page (private mode can block it) */
@@ -290,7 +300,7 @@ ${fixesHTML()}
      fold under "More" so the box stays short on phones (2026-10-19). [date, text, only on sites whose title starts with this] */
   const NEWS = [
     ['2026-10-21', '✅ Thank you to the student who flagged a mistake in ⏱️ Timed full answer (question 7)! It is fixed: when a quotation is nearly right, the site now shows the real words and what is different.', 'Year 9 English'],
-    ['2026-10-21', '🚩 NEW: the Report a mistake tab on the right of every page: tell us about a mistake, an idea or something you don’t like. When we reply, the tab flashes blue. Tap 👍 or 👎 at the bottom to say if a page helped.'],
+    ['2026-10-21', '🚩 NEW: the Report a mistake button in the bottom corner of every page: tell us about a mistake, an idea or something you don’t like. When we reply, the button flashes blue. Tap 👍 or 👎 at the bottom to say if a page helped.'],
     ['2026-10-20', '🌸 NEW in 🎯 Practise: PETAL step by step. Practise each part of PETAL on its own with marking, including 🔗 L+: linking to Orwell’s intentions and the context.', 'Year 9 English'],
     ['2026-10-20', '🤖 NEW: an AI helper. Stuck on something? Tap 🤖 Ask AI at the top of the screen and ask about the page you are on.', 'Year '],
     ['2026-10-19', '🎟 NEW: Golden Ticket tasks. The school’s extra challenge tasks: print or do them, then hand them in to your teacher (in the menu).'],
@@ -431,7 +441,7 @@ ${fixesHTML()}
       if (want !== tv) app.insertBefore(tv, top ? top.nextSibling : app.firstChild); }
   }
   const css = document.createElement('style');
-  css.textContent = `.flagbar { margin: 32px 0 0; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  css.textContent = `.flagbar { margin: 32px 0 76px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 .flagbar .flagmsg { flex-basis: 100%; }
 .flagpanel { color: var(--ink, #1d2433); text-align: left; max-width: 520px; margin: 8px auto 0; padding: 12px; border-radius: 12px; border: 1px solid var(--line, #E2E8F0); background: var(--card, #fff); }
 .flagpanel textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 16px; padding: 8px; border-radius: 8px; border: 1px solid var(--line, #CBD5E1); background: transparent; color: inherit; }
@@ -451,12 +461,19 @@ ${fixesHTML()}
 .chatlog .me { justify-self: end; background: color-mix(in srgb, var(--brand, #1D4ED8) 14%, transparent); border-bottom-right-radius: 4px; }
 .chatlog .them { justify-self: start; background: color-mix(in srgb, var(--muted, #5B6475) 14%, transparent); border-bottom-left-radius: 4px; }
 .chatbadge { display: inline-block; margin-left: 4px; padding: 1px 8px; border-radius: 999px; background: var(--brand, #1D4ED8); color: #fff; font-size: 12px; font-weight: 700; }
-.chattab { position: fixed; z-index: 58; right: 0; top: 50%; transform: translateY(-50%); writing-mode: vertical-rl; padding: 14px 7px; border: 0; border-radius: 12px 0 0 12px; background: var(--brand, #1D4ED8); color: #fff; font: inherit; font-size: 14px; font-weight: 700; letter-spacing: .02em; cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,.2); }
-.chattab:focus-visible { outline: 3px solid #93C5FD; outline-offset: 2px; }
-.chattab.flash { animation: chatflash 1.1s ease-in-out infinite; }
+.chattab { position: fixed; z-index: 58; right: max(14px, env(safe-area-inset-right, 0px)); bottom: calc(var(--chatnav, 0px) + 14px + env(safe-area-inset-bottom, 0px)); display: inline-flex; align-items: center; gap: 8px; padding: 13px 20px; border: 0; border-radius: 999px; background: var(--brand, #1D4ED8); color: #fff; font: inherit; font-size: 16px; font-weight: 700; line-height: 1.2; cursor: pointer; box-shadow: 0 6px 22px rgba(0,0,0,.28); }
+.chattab:hover { filter: brightness(1.08); }
+.chattab:focus-visible { outline: 3px solid #93C5FD; outline-offset: 3px; }
+.chattab.chatnew { animation: chatflash 1.1s ease-in-out infinite; }
 @keyframes chatflash { 0%, 100% { background: #1D4ED8; box-shadow: 0 0 0 0 rgba(37,99,235,.7); } 50% { background: #60A5FA; box-shadow: 0 0 0 10px rgba(37,99,235,0); } }
-@media (prefers-reduced-motion: reduce) { .chattab.flash { animation: none; background: #2563EB; outline: 3px solid #93C5FD; } }
-.chatside { position: fixed; z-index: 59; right: max(8px, env(safe-area-inset-right, 0px)); bottom: calc(84px + env(safe-area-inset-bottom, 0px)); width: min(400px, calc(100vw - 16px)); max-height: calc(100vh - 150px); overflow-y: auto; box-sizing: border-box; padding: 12px 14px; border-radius: 16px; border: 2px solid var(--brand, #1D4ED8); background: var(--card, #fff); color: var(--ink, #1d2433); box-shadow: 0 12px 40px rgba(0,0,0,.25); text-align: left; }
+@media (prefers-reduced-motion: reduce) { .chattab.chatnew { animation: none; background: #2563EB; outline: 3px solid #93C5FD; } }
+.chatside { position: fixed; z-index: 59; right: max(8px, env(safe-area-inset-right, 0px)); bottom: calc(var(--chatnav, 0px) + 78px + env(safe-area-inset-bottom, 0px)); width: min(400px, calc(100vw - 16px)); max-height: calc(100vh - var(--chatnav, 0px) - 150px); overflow-y: auto; box-sizing: border-box; padding: 12px 14px; border-radius: 16px; border: 2px solid var(--brand, #1D4ED8); background: var(--card, #fff); color: var(--ink, #1d2433); box-shadow: 0 12px 40px rgba(0,0,0,.25); text-align: left; }
+/* phones (portrait, or landscape with a short screen): the chat opens full screen; tablets and laptops keep the pop-up beside the page */
+@media (max-width: 600px), (max-width: 950px) and (max-height: 500px) {
+  .chatside { z-index: 1000; inset: 0; width: auto; max-height: none; border: 0; border-radius: 0; box-shadow: none; padding: calc(14px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+  .chatside .chathead { position: sticky; top: calc(-14px - env(safe-area-inset-top, 0px)); background: var(--card, #fff); padding: 6px 0; z-index: 1; font-size: 17px; }
+  .chatside .chatlog { max-height: none; }
+}
 .chatside .chathead { display: flex; align-items: center; gap: 8px; }
 .chatside .chathead b { flex: 1; }
 .chatside .chatx { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line, #CBD5E1); background: transparent; color: inherit; font: inherit; cursor: pointer; }

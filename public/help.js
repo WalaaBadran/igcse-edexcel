@@ -178,12 +178,15 @@ ${fixesHTML()}
     return t || '';
   };
   const escH = x => String(x).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  let newReplies = 0;
+  let newReplies = 0, readTimer = 0, hotUntil = 0;
   function chatLog(box, msgs) {
     if (!msgs || !msgs.length) { box.innerHTML = ''; return; }
-    box.innerHTML = msgs.slice(-20).map(m => `<div class="cb ${m.from === 'owner' ? 'them' : 'me'}"><div>${escH(m.msg).replace(/\n/g, '<br>')}</div><small>${m.from === 'owner' ? 'Reply from the parent who made this site' : 'You'} · ${new Date(m.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</small></div>`).join('');
+    const was = +(get('chat-read') || 0);
+    box.innerHTML = msgs.slice(-20).map(m => `<div class="cb ${m.from === 'owner' ? 'them' : 'me'}${m.from === 'owner' && m.id > was ? ' cbnew' : ''}"><div>${escH(m.msg).replace(/\n/g, '<br>')}</div><small>${m.from === 'owner' ? 'Reply from the parent who made this site' : 'You'} · ${new Date(m.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</small></div>`).join('');
     const top = Math.max(0, ...msgs.filter(m => m.from === 'owner').map(m => m.id));
-    if (top) { put('chat-read', String(top)); newReplies = 0; sset('chat-new', '0'); paintReplies(); }
+    // a reply counts as read only after 2 seconds on screen in the open chat: if the chat is closed sooner, the button blinks
+    clearTimeout(readTimer);
+    if (top > was) readTimer = setTimeout(() => { if (box.isConnected) { put('chat-read', String(top)); newReplies = 0; sset('chat-new', '0'); paintReplies(); } }, 2000);
     box.scrollTop = box.scrollHeight;
   }
   /* 🚩 Report a mistake, as a chat beside the page (user 2026-10-21: "put flag a mistake ... as a chat box like flag/report a
@@ -213,7 +216,7 @@ ${fixesHTML()}
     }
     document.documentElement.style.setProperty('--chatnav', h + 'px');
   }
-  function chatClose() { const w = document.querySelector('body > .chatside'); if (w) w.remove(); paintReplies(); }
+  function chatClose() { const w = document.querySelector('body > .chatside'); if (w) { w.remove(); checkReplies(); } paintReplies(); }   // closing checks at once
   function chat(mode) {   // mode: '' (the tab: the student chooses), 'mistake', or 'dislike' (after 👎)
     chatClose();
     let kind = mode;   // nothing is chosen until the student taps, unless they came from 👎
@@ -242,7 +245,7 @@ ${fixesHTML()}
         .then(r => r.json().catch(() => ({})).then(j => ({ ok: r.ok, j })))
         .then(({ ok, j }) => {
           send.disabled = false; send.textContent = '📨 Send';
-          if (ok) { ta.value = ''; chatLog(log, j.msgs); lastSeenTop = Math.max(0, ...(j.msgs || []).map(m => m.id)); note.innerHTML = '<b>✅ Sent. Thank you!</b> If the parent who made this site replies, the 🚩 Report a mistake button blinks red and blue: open it to read the reply.'; if (window.SITE_USE) SITE_USE('tool-msg'); return; }
+          if (ok) { hotUntil = Date.now() + 10 * 60e3; ta.value = ''; chatLog(log, j.msgs); lastSeenTop = Math.max(0, ...(j.msgs || []).map(m => m.id)); note.innerHTML = '<b>✅ Sent. Thank you!</b> If the parent who made this site replies, the 🚩 Report a mistake button blinks red and blue: open it to read the reply.'; if (window.SITE_USE) SITE_USE('tool-msg'); return; }
           note.textContent = j.error || 'It did not send. Please try again in a minute.';
         })
         .catch(() => { note.textContent = 'It did not send (no internet?). Your text is still here: try again when you are online.'; send.disabled = false; send.textContent = '📨 Send'; });
@@ -265,11 +268,11 @@ ${fixesHTML()}
   }
   if (!GUEST) {
     let tick = 0;
-    setInterval(() => {
+    setInterval(() => {   // every 5 s while the chat is open or for 10 minutes after sending, otherwise every 30 s
       if (document.visibilityState !== 'visible' || !chatId(false)) return;
       tick++;
-      if (document.querySelector('body > .chatside') || tick % 3 === 0) checkReplies();
-    }, 10000);
+      if (document.querySelector('body > .chatside') || Date.now() < hotUntil || tick % 6 === 0) checkReplies();
+    }, 5000);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkReplies(); });
   }
   function paintReplies() {   // a new reply: the button blinks red and blue with a badge until the chat is opened
@@ -491,6 +494,8 @@ ${fixesHTML()}
 .chatlog { display: grid; gap: 6px; margin: 8px 0 0; max-height: 280px; overflow-y: auto; }
 .chatlog:empty { display: none; }
 .chatlog .cb { max-width: 85%; padding: 8px 12px; border-radius: 14px; overflow-wrap: anywhere; }
+.chatlog .cbnew { animation: cbnew 1s ease-in-out 4; outline: 2px solid #DC2626; }
+@keyframes cbnew { 50% { outline-color: #1D4ED8; background: color-mix(in srgb, #DC2626 14%, transparent); } }
 .chatlog .cb small { display: block; font-size: 11.5px; opacity: .8; margin-top: 2px; }
 .chatlog .me { justify-self: end; background: color-mix(in srgb, var(--brand, #1D4ED8) 14%, transparent); border-bottom-right-radius: 4px; }
 .chatlog .them { justify-self: start; background: color-mix(in srgb, var(--muted, #5B6475) 14%, transparent); border-bottom-left-radius: 4px; }

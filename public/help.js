@@ -199,7 +199,7 @@ ${fixesHTML()}
     if (GUEST || document.querySelector('body > .chattab')) return;
     const t = document.createElement('button'); t.type = 'button'; t.className = 'chattab';
     t.setAttribute('aria-label', 'Report a mistake, or send an idea, to the person who made this site');
-    t.innerHTML = '<span class="chattab-t">🚩 Report a mistake</span>';
+    t.innerHTML = '<span class="chattab-i" aria-hidden="true">🚩</span><span class="chattab-t">Report a mistake</span>';
     t.onclick = () => (document.querySelector('body > .chatside') ? chatClose() : chat(''));
     document.body.appendChild(t);
     chatPlace(); addEventListener('resize', chatPlace);
@@ -276,7 +276,8 @@ ${fixesHTML()}
     const t = document.querySelector('body > .chattab'); if (!t) return;
     const open = !!document.querySelector('body > .chatside');
     t.classList.toggle('chatnew', newReplies > 0 && !open);
-    t.querySelector('.chattab-t').textContent = open ? '✕ Close' : newReplies ? `💬 ${newReplies === 1 ? 'New reply! Tap to read' : newReplies + ' new replies! Tap to read'}` : '🚩 Report a mistake';
+    t.querySelector('.chattab-i').textContent = open ? '✕' : newReplies ? '💬' : '🚩';
+    t.querySelector('.chattab-t').textContent = open ? 'Close' : newReplies ? (newReplies === 1 ? 'New reply! Tap to read' : newReplies + ' new replies! Tap to read') : 'Report a mistake';
     // a red number on the corner, like a phone's new-message badge (user 2026-10-21: "the color indicated a new message received")
     let n = t.querySelector('.chatcount');
     if (newReplies && !open) { if (!n) { n = document.createElement('span'); n.className = 'chatcount'; n.setAttribute('aria-hidden', 'true'); t.appendChild(n); } n.textContent = newReplies > 9 ? '9+' : String(newReplies); }
@@ -505,6 +506,10 @@ ${fixesHTML()}
 .chatside { position: fixed; z-index: 59; right: max(8px, env(safe-area-inset-right, 0px)); bottom: calc(var(--chatnav, 0px) + 78px + env(safe-area-inset-bottom, 0px)); width: min(400px, calc(100vw - 16px)); max-height: calc(100vh - var(--chatnav, 0px) - 150px); overflow-y: auto; box-sizing: border-box; padding: 12px 14px; border-radius: 16px; border: 2px solid var(--brand, #1D4ED8); background: var(--card, #fff); color: var(--ink, #1d2433); box-shadow: 0 12px 40px rgba(0,0,0,.25); text-align: left; }
 /* phones (portrait, or landscape with a short screen): the chat opens full screen; tablets and laptops keep the pop-up beside the page */
 @media (max-width: 600px), (max-width: 950px) and (max-height: 500px) {
+  /* a small round 🚩 in the corner, so it never covers an answer (a student, 21 Oct: "i cant pick my option for the question": the
+     wide button sat on the last option); it grows again to say "New reply!" when there is one */
+  .chattab:not(.chatnew) { width: 50px; height: 50px; padding: 0; justify-content: center; font-size: 22px; right: max(10px, env(safe-area-inset-right, 0px)); bottom: calc(var(--chatnav, 0px) + 10px + env(safe-area-inset-bottom, 0px)); }
+  .chattab:not(.chatnew) .chattab-t { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .chatside { z-index: 1000; inset: 0; width: auto; max-height: none; border: 0; border-radius: 0; box-shadow: none; padding: calc(14px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
   .chatside .chathead { position: sticky; top: calc(-14px - env(safe-area-inset-top, 0px)); background: var(--card, #fff); padding: 6px 0; z-index: 1; font-size: 17px; }
   .chatside .chatlog { max-height: none; }

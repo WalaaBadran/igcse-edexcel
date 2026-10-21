@@ -134,11 +134,15 @@ const CHAT_KINDS = ['mistake', 'idea', 'dislike', 'other'];
 let chatReady = false;
 async function chatSetup(db) {
   if (chatReady) return;
+  // ⚡ made once; then one quick check instead of three statements each time a server copy starts
+  try { const r = await db.prepare("SELECT val FROM vkeys WHERE name = 'schema-chat'").first(); if (r && r.val === 'c1') { chatReady = true; return; } } catch (e) {}
   await db.prepare('CREATE TABLE IF NOT EXISTS chat (id INTEGER PRIMARY KEY AUTOINCREMENT, thread TEXT, site TEXT, sender TEXT, kind TEXT, page TEXT, url TEXT, msg TEXT, created INTEGER, done INTEGER DEFAULT 0)').run();
   await db.prepare('CREATE INDEX IF NOT EXISTS chat_thread ON chat (thread)').run();
   try {   // the older "Flag a mistake" messages become conversations too (once)
     await db.prepare("INSERT INTO chat (thread, site, sender, kind, page, url, msg, created, done) SELECT 'flag-' || id, site, 'student', 'mistake', page, url, msg, created, done FROM flags WHERE NOT EXISTS (SELECT 1 FROM chat WHERE chat.thread = 'flag-' || flags.id)").run();
   } catch (e) {}
+  await db.prepare('CREATE TABLE IF NOT EXISTS vkeys (name TEXT PRIMARY KEY, val TEXT)').run();
+  await db.prepare("INSERT OR REPLACE INTO vkeys (name, val) VALUES ('schema-chat', 'c1')").run();
   chatReady = true;
 }
 const chatThread = t => /^[A-Za-z0-9-]{16,64}$/.test(String(t || '')) ? String(t) : '';
@@ -211,8 +215,12 @@ const VSITES = { 'year9-english': 'Y9 English', 'year8-english': 'Y8 English', '
   'year9-geography': 'Y9 Geography', 'year8-geography': 'Y8 Geography', 'year9-history': 'Y9 History', 'year8-history': 'Y8 History',
   'year9-math': 'Y9 Maths', 'year8-math': 'Y8 Maths', 'igcse-edexcel': 'IGCSE Maths (shared)' };
 let visitsReady = false;
+// ⚡ VSCHEMA: the tables below are made once; after that ONE quick check replaces ~16 table statements each time a server copy
+// starts (user 2026-10-21: show links were slow, about 10 s from the year page to a subject). Change it whenever a table changes.
+const VSCHEMA = 'v11';
 async function visitsTable(db) {
   if (visitsReady) return;
+  try { const r = await db.prepare("SELECT val FROM vkeys WHERE name = 'schema-visits'").first(); if (r && r.val === VSCHEMA) { visitsReady = true; return; } } catch (e) {}
   await db.prepare('CREATE TABLE IF NOT EXISTS visits (day TEXT, site TEXT, opens INTEGER, devices INTEGER, PRIMARY KEY (day, site))').run();
   await db.prepare('CREATE TABLE IF NOT EXISTS vdev (day TEXT, site TEXT, dev TEXT, PRIMARY KEY (day, site, dev))').run();
   for (const c of ['at', 'kind']) { try { await db.prepare(`ALTER TABLE vdev ADD COLUMN ${c} TEXT`).run(); } catch (e) {} }   // added in v3
@@ -229,6 +237,8 @@ async function visitsTable(db) {
   await db.prepare('CREATE TABLE IF NOT EXISTS vpassuse (pass TEXT, at INTEGER, site TEXT, kind TEXT)').run();
   // v8 (user 2026-10-21: "did the friend use the link, for how long, what did he check, which pages"): time and pages of each go
   for (const [c, t] of [['part', 'TEXT'], ['secs', 'INTEGER']]) { try { await db.prepare(`ALTER TABLE vpassuse ADD COLUMN ${c} ${t}`).run(); } catch (e) {} }
+  await db.prepare('CREATE TABLE IF NOT EXISTS vkeys (name TEXT PRIMARY KEY, val TEXT)').run();
+  await db.prepare("INSERT OR REPLACE INTO vkeys (name, val) VALUES ('schema-visits', ?1)").bind(VSCHEMA).run();
   visitsReady = true;
 }
 // where each site lives: all on deirarevise.workers.dev, except IGCSE Edexcel Maths on its own pages.dev link (user 2026-10-19:
@@ -403,9 +413,11 @@ async function visitsHook(request, env, ctx) {
     if (['GET', 'HEAD'].includes(request.method) && (request.headers.get('sec-fetch-dest') === 'document' || gp[2] === '/' || /\.html?$/.test(gp[2]))) {
       let ok = false, mine = false;
       if (env.DB) {
-        await visitsTable(env.DB); const gh = await vsha('guest:' + gp[1]);
-        const r = await env.DB.prepare('SELECT exp FROM vguest WHERE tok = ?1').bind(gh).first(); ok = !!(r && r.exp > Date.now());
-        if (ok) mine = await vGuestDev(env.DB, gh, url.hostname.split('.')[0], vDevCookie(request), false);
+        const gh = await vsha('guest:' + gp[1]), ck = vDevCookie(request), dh = ck ? await vsha('dev:' + ck) : '';
+        let r = null;
+        try { r = await env.DB.prepare('SELECT g.exp AS exp, d.devh AS devh FROM vguest g LEFT JOIN vgdev d ON d.g = g.tok AND d.site = ?2 WHERE g.tok = ?1').bind(gh, url.hostname.split('.')[0]).first(); }
+        catch (e) { await visitsTable(env.DB); r = await env.DB.prepare('SELECT g.exp AS exp, d.devh AS devh FROM vguest g LEFT JOIN vgdev d ON d.g = g.tok AND d.site = ?2 WHERE g.tok = ?1').bind(gh, url.hostname.split('.')[0]).first(); }
+        ok = !!(r && r.exp > Date.now()); mine = !!(ok && dh && r.devh === dh);
       }
       if (!ok) return vGuestPage('Visit ended', `<h1>This visit has ended</h1><p>A guest visit lasts a few hours. Please ask the person who sent the link for a new one.</p>`);
       if (!mine) return vGuestPage('For one person only', `<h1>🔒 This page is for one person only</h1><p>It is part of a guest visit that was sent to someone to look at on their own device. It does not open on other devices. Please ask the person who made the site.</p>`);
@@ -421,7 +433,7 @@ async function visitsHook(request, env, ctx) {
       await visitsTable(env.DB); const gh = await vsha('guest:' + gm[1]);
       const r = await env.DB.prepare('SELECT exp, pass FROM vguest WHERE tok = ?1').bind(gh).first(); ok = !!(r && r.exp > Date.now());
       if (ok) mine = await vGuestDev(env.DB, gh, url.hostname.split('.')[0], dv, true);
-      if (ok && mine && r.pass) await env.DB.prepare("INSERT INTO vpassuse (pass, at, site, kind) VALUES (?1, ?2, ?3, 'site')").bind(r.pass, Date.now(), url.hostname.split('.')[0]).run();
+      if (ok && mine && r.pass) { const job = env.DB.prepare("INSERT INTO vpassuse (pass, at, site, kind) VALUES (?1, ?2, ?3, 'site')").bind(r.pass, Date.now(), url.hostname.split('.')[0]).run().catch(() => {}); if (ctx && ctx.waitUntil) ctx.waitUntil(job); else await job; }
     }
     const to = url.searchParams.get('to') || '/', safeTo = /^\/(?!\/)/.test(to) ? to : '/';
     if (!ok) return vGuestPage('Visit ended', `<h1>This visit has ended</h1><p>A guest visit lasts a few hours. Please ask the person who sent the link for a new one.</p>`);
@@ -652,6 +664,7 @@ let cpReady = false, cpKey = null, cpLockAt = 0, cpLockRead = 0;
 const cpRand = () => (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g, '').slice(0, 32);
 async function cpSetup(db) {
   if (cpReady) return;
+  try { const r = await db.prepare("SELECT COUNT(*) AS n FROM vkeys WHERE name IN ('cp-secret', 'cp-lock', 'cp-join-year9', 'cp-join-year8')").first(); if (r && r.n === 4) { cpReady = true; return; } } catch (e) {}   // ⚡ made already
   await db.prepare('CREATE TABLE IF NOT EXISTS vkeys (name TEXT PRIMARY KEY, val TEXT)').run();
   await db.prepare("INSERT OR IGNORE INTO vkeys (name, val) VALUES ('cp-secret', ?1)").bind(cpRand() + cpRand()).run();
   await db.prepare("INSERT OR IGNORE INTO vkeys (name, val) VALUES ('cp-lock', '0')").run();

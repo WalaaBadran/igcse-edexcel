@@ -224,6 +224,8 @@ async function visitsTable(db) {
   // v7: when each show link was opened and which sites the visit went to (user 2026-10-21: "can i know if the friend visited the
   // show link everytime he uses it"); kept on this server only, nothing on the visitor's device
   await db.prepare('CREATE TABLE IF NOT EXISTS vpassuse (pass TEXT, at INTEGER, site TEXT, kind TEXT)').run();
+  // v8 (user 2026-10-21: "did the friend use the link, for how long, what did he check, which pages"): time and pages of each go
+  for (const [c, t] of [['part', 'TEXT'], ['secs', 'INTEGER']]) { try { await db.prepare(`ALTER TABLE vpassuse ADD COLUMN ${c} ${t}`).run(); } catch (e) {} }
   visitsReady = true;
 }
 // where each site lives: all on deirarevise.workers.dev, except IGCSE Edexcel Maths on its own pages.dev link (user 2026-10-19:
@@ -343,6 +345,22 @@ async function visitsHook(request, env, ctx) {
   // 👀 the show link itself. Opening it only shows a button (message apps open links to make previews, and that must not use
   // one of the two goes); the button uses one go and opens the site in guest mode: help.js then saves nothing on that device
   // and nothing is counted.
+  // 👀 during a show-link visit, help.js sends the pages opened and the minutes of use (only with the visit's own number;
+  // the link page tells the visitor that the sender can see this)
+  if (url.pathname === '/__guestuse' && request.method === 'POST') {
+    const g = url.searchParams.get('g') || '';
+    if (env.DB && /^[a-f0-9]{32}$/.test(g)) {
+      const job = (async () => {
+        await visitsTable(env.DB);
+        const r = await env.DB.prepare('SELECT exp, pass FROM vguest WHERE tok = ?1').bind(await vsha('guest:' + g)).first();
+        if (!(r && r.exp > Date.now() && r.pass)) return;
+        const p = (url.searchParams.get('p') || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 30), t = Math.min(Math.max(+url.searchParams.get('t') || 0, 0), 600);
+        if (p || t) await env.DB.prepare("INSERT INTO vpassuse (pass, at, site, kind, part, secs) VALUES (?1, ?2, ?3, 'use', ?4, ?5)").bind(r.pass, Date.now(), url.hostname.split('.')[0], p, t).run();
+      })().catch(() => {});
+      if (ctx && ctx.waitUntil) ctx.waitUntil(job); else await job;
+    }
+    return new Response(null, { status: 204, headers: { 'cache-control': 'no-store' } });
+  }
   // 👀 arriving from the hub or another subject site during a guest visit: this site opens in guest mode too
   const gm = url.pathname.match(/^\/__guest\/([a-f0-9]{32})$/);
   if (gm && request.method === 'GET') {
@@ -374,7 +392,7 @@ async function visitsHook(request, env, ctx) {
     }
     const name = VSITES[site] || 'study site';
     const body = opened ? `<p>Opening ${name}…</p><script>try { sessionStorage.setItem('guest', '1'); sessionStorage.setItem('gtok', ${JSON.stringify(gs)}); } catch (e) {} location.replace('/');</script>`
-      : left > 0 ? `<h1>👀 ${name}</h1><p>You have been sent a link to look at this revision site. It opens in guest mode: nothing is saved on your device. The person who sent it can see when it is opened.</p>
+      : left > 0 ? `<h1>👀 ${name}</h1><p>You have been sent a link to look at this revision site. It opens in guest mode: nothing is saved on your device. The person who sent it can see when it is opened, for how long, and which pages are looked at.</p>
 <p>This link works <b>${left === 1 ? 'one more time' : 'twice'}</b>.</p><form method="post"><button type="submit">Open the site</button></form>`
       : `<h1>This link has stopped working</h1><p>It could be opened twice, and it has been used. Please ask the person who sent it for a new one.</p>`;
     return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${name}</title>
@@ -407,7 +425,7 @@ async function visitsHook(request, env, ctx) {
       chats = (await env.DB.prepare('SELECT id, thread, site, sender, kind, page, url, msg, created, done FROM chat ORDER BY id DESC LIMIT 2000').all()).results || [];
       uses = (await env.DB.prepare('SELECT site, part, SUM(n) AS n FROM vuse WHERE day >= ?1 GROUP BY site, part ORDER BY n DESC').bind(vDay(6)).all()).results || [];
       passes = (await env.DB.prepare('SELECT rowid AS id, tok, site, uses, created FROM vpass WHERE created > ?1 ORDER BY created DESC LIMIT 20').bind(Date.now() - 14 * 864e5).all()).results || [];
-      puse = (await env.DB.prepare('SELECT pass, at, site, kind FROM vpassuse WHERE at > ?1 ORDER BY at').bind(Date.now() - 15 * 864e5).all()).results || [];
+      puse = (await env.DB.prepare('SELECT pass, at, site, kind, part, secs FROM vpassuse WHERE at > ?1 ORDER BY at').bind(Date.now() - 15 * 864e5).all()).results || [];
     }
     const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const KIND = { mistake: '🚩 Mistake', idea: '💡 Idea to improve', dislike: '👎 Doesn’t like', other: '💬 Message' };
@@ -445,10 +463,17 @@ ${isOpen ? (canReply ? `<form method="post" action="/__visits/reply" class="rf">
     const newLink = (VSITES[np[0]] || VHUBS[np[0]]) && /^[a-f0-9]{32}$/.test(np[1] || '') ? `https://${vPassHost(np[0])}/__show/${np[1]}` : '';
     // each go of a show link: when it was opened and the sites that visit went to (hub = "Hub")
     const siteName = s => /^year\d$/.test(s) ? 'Hub' : (VSITES[s] || s);
-    const goes = tok => {
+    const goes = tok => {   // each go: when, about how long, and the sites with the pages opened on each
       const ev = puse.filter(x => x.pass === tok); if (!ev.length) return '<small>not opened yet</small>';
-      const out = []; for (const x of ev) { if (x.kind === 'open' || !out.length) out.push({ at: x.at, sites: [siteName(x.site)] }); else if (!out[out.length - 1].sites.includes(siteName(x.site))) out[out.length - 1].sites.push(siteName(x.site)); }
-      return out.map((g, i) => `<b>Go ${i + 1}:</b> ${when(g.at)} · ${g.sites.map(esc).join(', ')}`).join('<br>');
+      const out = [];
+      for (const x of ev) {
+        if (x.kind === 'open' || !out.length) out.push({ at: x.at, secs: 0, sites: new Map() });
+        const g = out[out.length - 1], nm = siteName(x.site);
+        if (!g.sites.has(nm)) g.sites.set(nm, new Set());
+        if (x.kind === 'use') { g.secs += x.secs || 0; if (x.part) g.sites.get(nm).add(uname(x.part)); }
+      }
+      const mins = g => g.secs >= 60 ? `about ${Math.round(g.secs / 60)} min` : g.secs ? 'under 1 min' : '<small>time not recorded</small>';
+      return out.map((g, i) => `<b>Go ${i + 1}:</b> ${when(g.at)} · ${mins(g)}<br>${[...g.sites].map(([s, ps]) => `<b>${esc(s)}</b>${ps.size ? ': ' + [...ps].map(esc).join(', ') : ''}`).join(' · ')}`).join('<br>');
     };
     const used2 = d => devs.filter(x => x.day === d && (x.secs || 0) >= 120).length;
     const used = (d, s) => devs.filter(x => x.day === d && x.site === s && (x.secs || 0) >= 120).length;
@@ -495,7 +520,7 @@ ${fb.length ? `<div class="wrap"><table style="min-width:0"><tr><th>Site</th><th
 ${fb.map(([s, i, d, mk, o]) => `<details${[...i, ...d, ...mk, ...o].some(x => !x.done) ? ' open' : ''}><summary><b>${esc(VSITES[s])}</b></summary><ul>${[...i, ...d, ...mk, ...o].sort((a, b) => b.id - a.id).slice(0, 20).map(x => `<li>${x.done ? '<small>finished</small>' : '<b style="color:#b42318">open</b>'} · ${KIND[x.kind] || KIND.other}: “${esc(x.msg)}” <small>· page: ${esc(x.page || 'Home')} · ${when(x.created)}</small></li>`).join('')}</ul></details>`).join('')}` : '<p>None yet.</p>'}
 <h2 id="use">📊 What students use (last 7 days)</h2><p>How many times each part was opened, all devices together. No device numbers and no names: just totals. Your own devices are not counted.</p>
 ${useRows.length ? `<div class="wrap"><table style="min-width:0"><tr><th>Site</th><th style="text-align:left">Parts opened (most used first)</th></tr>${useRows.map(([s, l]) => `<tr><td>${esc(VSITES[s])}</td><td class="l">${l.slice(0, 14).map(u => `${esc(uname(u.part))} <b>${u.n}</b>`).join(' · ')}</td></tr>`).join('')}</table></div>` : '<p>Nothing yet: counting started on 21 Oct 2026.</p>'}
-<h2 id="show">👀 Show links</h2><p>A link for someone outside the class, for example a friend. It can be opened <b>twice only</b>, then it stops (and after 14 days). Choose a year group’s hub to show the hub page <b>and all its subject sites</b>: each go is one visit of about 6 hours, moving freely between them. While they use it, nothing is saved on their device, they are not counted, and the message buttons are hidden. Below you see when each go was opened and which sites were visited (the link page tells them you can see when it is opened). The sites have no password, so it can’t stop someone who copies a normal web address.</p>
+<h2 id="show">👀 Show links</h2><p>A link for someone outside the class, for example a friend. It can be opened <b>twice only</b>, then it stops (and after 14 days). Choose a year group’s hub to show the hub page <b>and all its subject sites</b>: each go is one visit of about 6 hours, moving freely between them. While they use it, nothing is saved on their device, they are not counted, and the message buttons are hidden. Below you see, for each go: when it was opened, about how long it lasted on the subject sites, and the pages looked at on each site (the link page tells them you can see this). The sites have no password, so it can’t stop someone who copies a normal web address.</p>
 <form method="post" action="/__visits/pass" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px">${hid('k', k)}<label for="ps">Show:</label><select id="ps" name="site">${[...Object.keys(VHUBS), ...Object.keys(VSITES)].map(s => `<option value="${s}">${esc(vPassName(s))}</option>`).join('')}</select><button type="submit">Make a show link</button></form>
 ${newLink ? `<div class="newlink"><b>Your new show link</b> (it is shown only now):<br><span id="nl">${esc(newLink)}</span><br><button type="button" id="cp" style="margin-top:8px">Copy the link</button> <span id="cpd" class="small"></span></div>` : ''}
 ${passes.length ? `<div class="wrap" style="margin-top:10px"><table style="min-width:0"><tr><th>Link for</th><th>Made</th><th>Goes left</th><th style="text-align:left">Opened (UAE time) and sites visited</th><th></th></tr>${passes.map(p => `<tr><td>${esc(vPassName(p.site))}</td><td>${when(p.created)}</td><td>${p.uses > 0 ? p.uses + ' of 2' : 'used up / stopped'}</td><td class="l">${goes(p.tok)}</td><td>${p.uses > 0 ? `<form method="post" action="/__visits/stop" style="margin:0">${hid('k', k)}${hid('id', p.id)}<button type="submit" class="ghost">Stop it</button></form>` : ''}</td></tr>`).join('')}</table></div>` : ''}

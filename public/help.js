@@ -349,6 +349,22 @@ ${fixesHTML()}
       <p class="small muted" style="margin:6px 0 0">${Y.source || ''} Practice for each topic is added here when it is taught.${anyOak ? ' Get-ahead lessons are by Oak National Academy (UK), Open Government Licence v3.0; they open on Oak’s website. Your teacher’s lessons come first.' : ''}</p></details>`;
   }
   window.YEAR_HTML = yearHTML;
+  // 👀 a show-link visit (user 2026-10-21: "did the friend use the link, for how long, what did he check, which pages"): the pages
+  // opened and the minutes of use go to the server with the visit's own number only, for the person who sent the link (the link
+  // page tells the visitor). Nothing is kept on the visitor's device.
+  try {
+    const gv = GUEST && sget('gtok');
+    if (gv && /^[a-f0-9]{32}$/.test(gv) && navigator.sendBeacon) {
+      let act = 0, lastIn = Date.now(), lastPart = '';
+      ['pointerdown', 'keydown', 'input', 'scroll', 'touchstart', 'wheel'].forEach(ev => addEventListener(ev, () => { lastIn = Date.now(); }, { passive: true, capture: true }));
+      const ping = (p, t) => navigator.sendBeacon('/__guestuse?g=' + gv + (p ? '&p=' + encodeURIComponent(p) : '') + (t ? '&t=' + t : ''));
+      const page = () => { const p = partNow(); if (p !== lastPart) { lastPart = p; ping(p, 0); } };
+      page(); addEventListener('hashchange', page);
+      setInterval(() => { if (document.visibilityState === 'visible' && Date.now() - lastIn < 120000) act += 15; if (act >= 60) { ping('', act); act = 0; } }, 15000);
+      const flush = () => { if (act) { ping('', act); act = 0; } };
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); }); addEventListener('pagehide', flush);
+    }
+  } catch (e) {}
   // 📈 visit count (the site's Worker): one ping per page load with a random device number; the server counts each device
   // once a day per site. The owner's devices ('vown', set from the owner's visits page) send nothing.
   try {

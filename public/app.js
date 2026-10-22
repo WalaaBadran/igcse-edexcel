@@ -144,7 +144,7 @@
     const s = document.createElement('script');
     s.src = 'pp.js?v=15';
     s.onload = () => {   // the worked solutions come next; the questions work without them
-      const w = document.createElement('script'); w.src = 'solutions.js?v=75';
+      const w = document.createElement('script'); w.src = 'solutions.js?v=76';
       w.onload = w.onerror = () => { ppNote(''); const q = ppWait; ppWait = null; q.forEach(f => f()); };
       document.body.appendChild(w);
     };

@@ -694,3 +694,22 @@ html:not(.sync-on) .needsync { display: none !important; }`;
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go();
   window.addEventListener('hashchange', () => setTimeout(paint, 50));
 })();
+
+// 🩹 A page that did not start (2026-10-22 deep check): on a weak connection one of the site's files can fail to download,
+// and the page then shows nothing but these shared boxes. Reload once by itself; if it happens again within a minute,
+// say so with a Try again button instead of leaving an empty page.
+(function () {
+  const OWN = '.flagbar, .termbar, .yearcard, .newsbar, .stk-box, .ck-out, script, style';
+  const empty = () => { const a = document.getElementById('app'); return !!a && ![...a.children].some(c => !c.matches(OWN)); };
+  addEventListener('load', () => setTimeout(() => {
+    if (!empty()) return;
+    let last = 0, can = true;
+    try { last = +sessionStorage.getItem('load-retry') || 0; sessionStorage.setItem('load-retry', String(Date.now())); } catch (e) { can = false; }
+    if (can && Date.now() - last > 60000) return location.reload();
+    const a = document.getElementById('app'), d = document.createElement('div');
+    d.className = 'card'; d.style.cssText = 'margin:16px 0;border-left:4px solid #DC2626';
+    d.innerHTML = '<b>⚠️ This page did not load properly.</b><p style="margin:6px 0 10px">The internet may be slow. Your saved work is safe on this device.</p><button type="button" class="btn">🔄 Try again</button>';
+    d.querySelector('button').onclick = () => location.reload();
+    a.prepend(d);
+  }, 1500));
+})();

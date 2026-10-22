@@ -54,13 +54,14 @@
   // The last test is kept on this device (question ids and the marks entered), so it can be marked days later (user, 2026-10-18).
   const LKEY = 'y8m-lasttest';
   const lastTest = () => { try { return JSON.parse(localStorage.getItem(LKEY)); } catch (e) { return null; } };
-  const keepTest = () => { try { localStorage.setItem(LKEY, JSON.stringify({ ids: WS.pick.map(r => r[9]), marks: WS.marks, made: WS.made, name: WS.name })); } catch (e) {} };
+  const keepTest = () => { try { localStorage.setItem(LKEY, JSON.stringify({ ids: WS.pick.map(r => r[9]), marks: WS.marks, made: WS.made, name: WS.name, f: WS.formula })); } catch (e) {} };
   function makeWorksheet() {
     ppLoad(() => {
       const pool = wsPool(), want = Math.min(Math.max(parseInt($('count').value, 10) || 10, 1), PP_ALL);
       if (!pool.length) { $('msg').textContent = 'Choose at least one topic and one difficulty first.'; return; }
       const pick = shuffle(pool).slice(0, want).sort((a, b) => a[1] - b[1] || a[0] - b[0]);
-      WS = { pick, parts: sheetParts(pick, 'my test paper', true, $('formula').checked), view: 'q', name: 'igcse-edexcel-maths-test-' + new Date().toISOString().slice(0, 10), marks: {}, made: Date.now() };
+      const formula = $('formula').checked;
+      WS = { pick, formula, parts: sheetParts(pick, 'my test paper', true, formula), view: 'q', name: 'igcse-edexcel-maths-test-' + new Date().toISOString().slice(0, 10), marks: {}, made: Date.now() };
       keepTest(); drawSheet();
       $('sheet').scrollIntoView({ behavior: 'smooth', block: 'start' });
       $('msg').textContent = `Your test paper is ready below: ${pick.length} question${pick.length === 1 ? '' : 's'}.`;
@@ -70,7 +71,8 @@
     ppLoad(() => {
       const L = lastTest(); if (!L) return;
       const byId = new Map(window.Y8M_PP.q.map(r => [r[9], r])), pick = L.ids.map(id => byId.get(id)).filter(Boolean);
-      WS = { pick, parts: sheetParts(pick, 'my test paper', true, $('formula') ? $('formula').checked : true), view: 'mark', name: L.name, marks: L.marks || {}, made: L.made };
+      const formula = L.f !== undefined ? L.f : true;   // tests kept before 23 Oct 2026 had the sheet
+      WS = { pick, formula, parts: sheetParts(pick, 'my test paper', true, formula), view: 'mark', name: L.name, marks: L.marks || {}, made: L.made };
       drawSheet(); $('sheet').scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   }
@@ -158,7 +160,7 @@
   const specLabel = s => s === 'GCSE' ? 'GCSE' : 'IGCSE ' + s;
   // A test is two documents (user, 2026-10-18): the question paper, and the mark scheme with worked solutions, each to preview, print or download.
   // sheetParts gives both as HTML (preview and print) and as blocks for pdf.js (⬇ Download PDF).
-  // 📐 Formula sheet (user, 2026-10-18: on every test by default): the official IGCSE 4MA1 sheet. Foundation sheet when every
+  // 📐 Formula sheet (user: on by default 2026-10-18; the box starts empty since 2026-10-23): the official IGCSE 4MA1 sheet. Foundation sheet when every
   // question is from a Foundation paper, otherwise the Higher sheet (it has everything on the Foundation one and more).
   function sheetParts(pick, title, withSol = true, formula = true) {
     const P = window.Y8M_PP;

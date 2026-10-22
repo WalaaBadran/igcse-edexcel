@@ -13,6 +13,11 @@
   const save = () => put(KEY, PROG);
   const BAND = ['Easy', 'Medium', 'Hard', 'Very hard'];
   const P = () => window.Y8M_PP, SOL = () => window.Y8M_SOL || {}, T = () => window.Y8M_TOOLS;
+  // ✅ Model answers by Physics & Maths Tutor (user, 22 Oct 2026: use them instead of the AI-written steps where they exist).
+  // ma.js maps a question-paper link to PMT's model-answer PDF and each question's page. Link only: PMT's work is not copied.
+  const maLink = r => { const P_ = window.Y8M_PP, m = r && r[7] >= 0 && (window.Y8M_MA || {})[P_.urls[r[7]]]; if (!m) return ''; const pg = m[1][r[5]];
+    return `<a class="btn small" href="${m[0]}${pg ? '#page=' + pg : ''}" target="_blank" rel="noopener">📄 Open the model answer (Question ${r[5]}${pg ? ', page ' + pg : ''})</a>`; };
+  const maHTML = r => maLink(r) ? `<div class="sol"><b>✅ Model answer by a maths tutor</b> <span class="meta">(from Physics &amp; Maths Tutor; opens their PDF of the whole paper)</span><p style="margin:8px 0 0">${maLink(r)}</p></div>` : '';
   const solMeta = id => (window.Y8M_SOL_UNCHECKED || []).includes(id) ? '(written with AI help; this paper has no official mark scheme, so it could not be checked against one)' : '(written with AI help, checked against the official mark scheme)';   // 22 Oct 2026: 4400 Nov 2005 / June 2006
   const assess = window.Y8M_ASSESSMENT || { topics: [] };
   const live = r => (r[10] & 1) && !r[11];
@@ -71,7 +76,7 @@
     const moreHints = steps.length > 1 && R.hint < steps.length - 1 && !R.sol;
     const help = [
       moreHints && !R.ms ? `<button class="btn ghost" type="button" data-l="hint">🤔 I'm stuck: ${R.hint ? 'another hint' : 'give me a hint'}</button>` : '',
-      steps.length && !R.sol && !R.ms ? `<button class="btn ghost" type="button" data-l="sol">📝 I don't know: show me how</button>` : '',
+      (steps.length || maLink(r)) && !R.sol && !R.ms ? `<button class="btn ghost" type="button" data-l="sol">📝 I don't know: show me how</button>` : '',
       !R.ms && r[10] & 2 ? `<button class="btn" type="button" data-l="ms">✅ I've finished: check my answer</button>` : '',
       !R.ms && !(r[10] & 2) && steps.length && !R.sol ? `<button class="btn" type="button" data-l="sol">✅ I've finished: check my answer</button>` : '',
       (VID()[groupOfSub(r[0])] || [])[0] ? `<a class="btn small ghost" href="${esc(VID()[groupOfSub(r[0])][0][2])}" target="_blank" rel="noopener">🎬 Watch a video</a>` : '',
@@ -87,9 +92,10 @@
       ${help ? `<div class="row">${help}</div>` : ''}
       ${hints.length && !R.sol ? `<div class="lhint">${hints.map((h, k) => `<p><b>💡 Hint ${k + 1}:</b> ${esc(h)}</p>`).join('')}<p class="small muted">Hints are the first steps of the worked solution ${solMeta(r[9])}.</p></div>` : ''}
       ${R.ms ? `<p class="small" style="margin:12px 0 0"><b>✅ The official mark scheme</b> <span class="muted">· compare it with your answer</span></p><img class="lq" src="pp/ms/${r[9]}.webp" alt="Mark scheme">` : ''}
-      ${R.sol ? `<div class="sol"><b>📝 Step-by-step solution</b> <span class="meta">${solMeta(r[9])}</span><ol>${steps.map(x => `<li>${esc(x)}</li>`).join('')}</ol></div>` : ''}
-      ${R.ms && steps.length && !R.sol ? `<div class="row"><button class="btn small ghost" type="button" data-l="sol">📝 See the step-by-step solution</button></div>` : ''}
-      ${!steps.length && !(r[10] & 2) ? '<p class="small muted">No mark scheme or solution for this one yet.</p>' : !steps.length && !R.ms ? '<p class="small muted">No step-by-step solution for this one yet: check with the mark scheme.</p>' : ''}
+      ${R.sol && maLink(r) ? maHTML(r) + (steps.length ? (R.ai ? '' : `<div class="row"><button class="btn small ghost" type="button" data-l="ai">📝 Show the AI-written steps too</button></div>`) : '') : ''}
+      ${R.sol && (!maLink(r) || R.ai) && steps.length ? `<div class="sol"><b>📝 Step-by-step solution</b> <span class="meta">${solMeta(r[9])}</span><ol>${steps.map(x => `<li>${esc(x)}</li>`).join('')}</ol></div>` : ''}
+      ${R.ms && (steps.length || maLink(r)) && !R.sol ? `<div class="row"><button class="btn small ghost" type="button" data-l="sol">${maLink(r) ? '✅ See the model answer' : '📝 See the step-by-step solution'}</button></div>` : ''}
+      ${!steps.length && !(r[10] & 2) ? '<p class="small muted">No mark scheme or solution for this one yet.</p>' : !steps.length && !R.ms && !maLink(r) ? '<p class="small muted">No step-by-step solution for this one yet: check with the mark scheme.</p>' : ''}
       ${R.why ? whyHTML() : checked || (!steps.length && !(r[10] & 2)) ? `<div class="row lmark"><span class="small"><b>How did you do?</b></span><button class="btn" type="button" data-l="got">✓ Got it</button><button class="btn ghost" type="button" data-l="not">✗ Not yet</button></div>` : ''}
       <div class="row lnav">${R.i ? '<button class="btn small ghost" type="button" data-l="prev">← Back</button>' : ''}<span class="spacer"></span><button class="btn small ghost" type="button" data-l="skip">${R.res[R.i] ? 'Next →' : 'Skip →'}</button></div></div>`;
   }
@@ -243,16 +249,17 @@
     else if (a === 'again2') { start('Try again', tryAgain(), 'home'); return; }
     else if (a === 'hint') { RUN.hint++; }
     else if (a === 'sol') { RUN.sol = true; }
+    else if (a === 'ai') { RUN.ai = true; }
     else if (a === 'ms') { RUN.ms = true; }
     else if (a === 'not' && !RUN.why) { RUN.why = true; }   // ask why first
     else if (a === 'got' || a === 'not' || a === 'skip' || a === 'why') {
       const r = RUN.rows[RUN.i];
       if (a === 'why') { PROG[r[9]] = { s: 'not', t: Date.now(), d: today(), ...(el.dataset.w ? { why: el.dataset.w } : {}) }; save(); RUN.res[RUN.i] = 'not'; }
       else if (a !== 'skip') { PROG[r[9]] = { s: a, t: Date.now(), d: today() }; save(); RUN.res[RUN.i] = a; }
-      RUN.i++; RUN.hint = 0; RUN.sol = false; RUN.ms = false; RUN.why = false;
+      RUN.i++; RUN.hint = 0; RUN.sol = false; RUN.ai = false; RUN.ms = false; RUN.why = false;
     }
     else if (a === 'again') { RUN.i = 0; RUN.res = {}; }
-    else if (a === 'prev') { RUN.i = Math.max(0, RUN.i - 1); RUN.hint = 0; RUN.sol = false; RUN.ms = false; RUN.why = false; }
+    else if (a === 'prev') { RUN.i = Math.max(0, RUN.i - 1); RUN.hint = 0; RUN.sol = false; RUN.ai = false; RUN.ms = false; RUN.why = false; }
     else if (a === 'back') { const from = RUN && RUN.from; RUN = null; if (from === 'home') { location.hash = '#/'; drawHome(); return; } if (from === 'weak') TOPIC = null; }
     draw();
     if (['got', 'why', 'skip', 'prev', 'topic', 'topics', 'back', 'again'].includes(a)) $('learn') && $('learn').scrollIntoView({ block: 'start' });

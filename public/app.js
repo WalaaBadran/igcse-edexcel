@@ -156,6 +156,11 @@
   const PIC_Q = 1, PIC_MS = 2, PP_ALL = 100;   // a printed test holds at most 100 questions
   const SOL = () => window.Y8M_SOL || {};
   const solMeta = id => (window.Y8M_SOL_UNCHECKED || []).includes(id) ? '(written with AI help; this paper has no official mark scheme, so it could not be checked against one)' : '(written with AI help, checked against the official mark scheme)';   // 22 Oct 2026: 4400 Nov 2005 / June 2006
+  // ✅ Model answers by Physics & Maths Tutor (user, 22 Oct 2026: use them instead of the AI-written steps where they exist).
+  // ma.js maps a question-paper link to PMT's model-answer PDF and each question's page. Link only: PMT's work is not copied.
+  const maLink = r => { const P_ = window.Y8M_PP, m = r && r[7] >= 0 && (window.Y8M_MA || {})[P_.urls[r[7]]]; if (!m) return ''; const pg = m[1][r[5]];
+    return `<a class="btn small" href="${m[0]}${pg ? '#page=' + pg : ''}" target="_blank" rel="noopener">📄 Open the model answer (Question ${r[5]}${pg ? ', page ' + pg : ''})</a>`; };
+  const maHTML = r => maLink(r) ? `<div class="sol"><b>✅ Model answer by a maths tutor</b> <span class="meta">(from Physics &amp; Maths Tutor; opens their PDF of the whole paper)</span><p style="margin:8px 0 0">${maLink(r)}</p></div>` : '';
   const solHTML = id => SOL()[id] ? `<div class="sol"><b>📝 Worked solution</b> <span class="meta">${solMeta(id)}</span><ol>${SOL()[id].map(x => `<li>${esc(x)}</li>`).join('')}</ol></div>` : '';
   const specLabel = s => s === 'GCSE' ? 'GCSE' : 'IGCSE ' + s;
   // A test is two documents (user, 2026-10-18): the question paper, and the mark scheme with worked solutions, each to preview, print or download.
@@ -175,7 +180,7 @@
       + (formula ? `<div class="formula"><img src="${fsrc}" alt="Formulae sheet"></div><div class="page-break"></div>` : '')
       + pick.map((r, i) => `<div class="ppq"><p><b>Question ${i + 1}</b>${r[6] ? ` (${r[6]} marks)` : ''} <span class="meta">${esc(src(r))} · ${esc(P.subs[r[0]][1])} · ${PP_BAND[r[1]]}</span></p><img src="pp/q/${r[9]}.webp" alt="Question ${i + 1}"></div>`).join('');
     const mark = `<h2>IGCSE Edexcel Maths: ${esc(title)}: mark scheme</h2><p class="meta">${info} · the official mark schemes, in the same order as the questions.${withSol ? ' ' + solNote : ''}<br>${copy}</p>`
-      + pick.map((r, i) => `<div class="ppq"><p><b>Question ${i + 1}</b>${r[6] ? ` (${r[6]} marks)` : ''} <span class="meta">${esc(src(r))}</span></p>${r[10] & PIC_MS ? `<img src="pp/ms/${r[9]}.webp" alt="Mark scheme ${i + 1}">` : r[8] >= 0 ? `<p class="meta">This one is not cut out yet: see question ${r[5]} in the <a href="${esc(P.urls[r[8]])}">official mark scheme</a>.</p>` : '<p class="meta">No mark scheme was published.</p>'}${withSol ? solHTML(r[9]) : ''}</div>`).join('');
+      + pick.map((r, i) => `<div class="ppq"><p><b>Question ${i + 1}</b>${r[6] ? ` (${r[6]} marks)` : ''} <span class="meta">${esc(src(r))}</span></p>${r[10] & PIC_MS ? `<img src="pp/ms/${r[9]}.webp" alt="Mark scheme ${i + 1}">` : r[8] >= 0 ? `<p class="meta">This one is not cut out yet: see question ${r[5]} in the <a href="${esc(P.urls[r[8]])}">official mark scheme</a>.</p>` : '<p class="meta">No mark scheme was published.</p>'}${withSol ? maHTML(r) + solHTML(r[9]) : ''}</div>`).join('');
     const paperBlocks = [{ t: 'title', text: `IGCSE Edexcel Maths: ${title}` }, { t: 'meta', text: `Name: ______________________    Date: ______________    ${info}` }, { t: 'meta', text: `Topics: ${topicsTxt}` }, { t: 'meta', text: `Difficulty: ${levels}` }, { t: 'note', text: copy },
       ...(formula ? [{ t: 'img', src: fsrc, fit: true }, { t: 'break' }] : []),
       ...pick.flatMap((r, i) => [{ t: 'head', text: `Question ${i + 1}${r[6] ? ` (${r[6]} marks)` : ''}`, sub: `${src(r)} · ${P.subs[r[0]][1]} · ${PP_BAND[r[1]]}` }, { t: 'img', src: `pp/q/${r[9]}.webp` }])];
@@ -244,7 +249,7 @@
       else if (act === 'print') printSheet(WS.view === 'q' ? WS.parts.paper : WS.parts.mark);
       else if (act === 'pdf') downloadSheet(ws);
       else if (act === 'close') { WS = null; drawSheet(); }
-      else if (act === 'mkms') { const i = +ws.dataset.i, r = WS.pick[i], box = $('mkms' + i); box.innerHTML = box.innerHTML ? '' : `<img class="lq" src="pp/${r[10] & 2 ? 'ms' : 'q'}/${r[9]}.webp" alt="">${r[10] & 2 && (window.Y8M_SOL || {})[r[9]] ? solHTML(r[9]) : ''}`; }
+      else if (act === 'mkms') { const i = +ws.dataset.i, r = WS.pick[i], box = $('mkms' + i); box.innerHTML = box.innerHTML ? '' : `<img class="lq" src="pp/${r[10] & 2 ? 'ms' : 'q'}/${r[9]}.webp" alt="">${r[10] & 2 ? maHTML(r) + ((window.Y8M_SOL || {})[r[9]] ? solHTML(r[9]) : '') : ''}`; }
       else if (act === 'mkdone') {
         WS.showRes = true; keepTest();
         const L = window.Y8M_LEARN; if (L) WS.pick.forEach((r, i) => { if (WS.marks[i] != null) L.mark(r[9], WS.marks[i] >= (r[6] || 1) ? 'got' : 'not'); });

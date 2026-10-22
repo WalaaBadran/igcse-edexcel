@@ -13,6 +13,7 @@
   const save = () => put(KEY, PROG);
   const BAND = ['Easy', 'Medium', 'Hard', 'Very hard'];
   const P = () => window.Y8M_PP, SOL = () => window.Y8M_SOL || {}, T = () => window.Y8M_TOOLS;
+  const solMeta = id => (window.Y8M_SOL_UNCHECKED || []).includes(id) ? '(written with AI help; this paper has no official mark scheme, so it could not be checked against one)' : '(written with AI help, checked against the official mark scheme)';   // 22 Oct 2026: 4400 Nov 2005 / June 2006
   const assess = window.Y8M_ASSESSMENT || { topics: [] };
   const live = r => (r[10] & 1) && !r[11];
   const state = id => (PROG[id] || {}).s;
@@ -84,9 +85,9 @@
         <label class="wkans"><b>My answer</b> <input type="text" data-ans="${r[9]}" value="${esc(ANS[r[9]] || '')}" placeholder="Write your final answer" autocomplete="off"></label>
         <p class="small muted" style="margin:6px 0 0">Work it out here or on paper. The help below stays hidden until you ask for it.</p></div>
       ${help ? `<div class="row">${help}</div>` : ''}
-      ${hints.length && !R.sol ? `<div class="lhint">${hints.map((h, k) => `<p><b>💡 Hint ${k + 1}:</b> ${esc(h)}</p>`).join('')}<p class="small muted">Hints are the first steps of the worked solution (written with AI help, checked against the official mark scheme).</p></div>` : ''}
+      ${hints.length && !R.sol ? `<div class="lhint">${hints.map((h, k) => `<p><b>💡 Hint ${k + 1}:</b> ${esc(h)}</p>`).join('')}<p class="small muted">Hints are the first steps of the worked solution ${solMeta(r[9])}.</p></div>` : ''}
       ${R.ms ? `<p class="small" style="margin:12px 0 0"><b>✅ The official mark scheme</b> <span class="muted">· compare it with your answer</span></p><img class="lq" src="pp/ms/${r[9]}.webp" alt="Mark scheme">` : ''}
-      ${R.sol ? `<div class="sol"><b>📝 Step-by-step solution</b> <span class="meta">(written with AI help, checked against the official mark scheme)</span><ol>${steps.map(x => `<li>${esc(x)}</li>`).join('')}</ol></div>` : ''}
+      ${R.sol ? `<div class="sol"><b>📝 Step-by-step solution</b> <span class="meta">${solMeta(r[9])}</span><ol>${steps.map(x => `<li>${esc(x)}</li>`).join('')}</ol></div>` : ''}
       ${R.ms && steps.length && !R.sol ? `<div class="row"><button class="btn small ghost" type="button" data-l="sol">📝 See the step-by-step solution</button></div>` : ''}
       ${!steps.length && !(r[10] & 2) ? '<p class="small muted">No mark scheme or solution for this one yet.</p>' : !steps.length && !R.ms ? '<p class="small muted">No step-by-step solution for this one yet: check with the mark scheme.</p>' : ''}
       ${R.why ? whyHTML() : checked || (!steps.length && !(r[10] & 2)) ? `<div class="row lmark"><span class="small"><b>How did you do?</b></span><button class="btn" type="button" data-l="got">✓ Got it</button><button class="btn ghost" type="button" data-l="not">✗ Not yet</button></div>` : ''}

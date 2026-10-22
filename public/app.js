@@ -144,7 +144,7 @@
     const s = document.createElement('script');
     s.src = 'pp.js?v=15';
     s.onload = () => {   // the worked solutions come next; the questions work without them
-      const w = document.createElement('script'); w.src = 'solutions.js?v=69';
+      const w = document.createElement('script'); w.src = 'solutions.js?v=70';
       w.onload = w.onerror = () => { ppNote(''); const q = ppWait; ppWait = null; q.forEach(f => f()); };
       document.body.appendChild(w);
     };
@@ -153,7 +153,8 @@
   }
   const PIC_Q = 1, PIC_MS = 2, PP_ALL = 100;   // a printed test holds at most 100 questions
   const SOL = () => window.Y8M_SOL || {};
-  const solHTML = id => SOL()[id] ? `<div class="sol"><b>📝 Worked solution</b> <span class="meta">(written with AI help, checked against the official mark scheme)</span><ol>${SOL()[id].map(x => `<li>${esc(x)}</li>`).join('')}</ol></div>` : '';
+  const solMeta = id => (window.Y8M_SOL_UNCHECKED || []).includes(id) ? '(written with AI help; this paper has no official mark scheme, so it could not be checked against one)' : '(written with AI help, checked against the official mark scheme)';   // 22 Oct 2026: 4400 Nov 2005 / June 2006
+  const solHTML = id => SOL()[id] ? `<div class="sol"><b>📝 Worked solution</b> <span class="meta">${solMeta(id)}</span><ol>${SOL()[id].map(x => `<li>${esc(x)}</li>`).join('')}</ol></div>` : '';
   const specLabel = s => s === 'GCSE' ? 'GCSE' : 'IGCSE ' + s;
   // A test is two documents (user, 2026-10-18): the question paper, and the mark scheme with worked solutions, each to preview, print or download.
   // sheetParts gives both as HTML (preview and print) and as blocks for pdf.js (⬇ Download PDF).
@@ -179,7 +180,7 @@
     const markBlocks = [{ t: 'title', text: `IGCSE Edexcel Maths: ${title}: mark scheme` }, { t: 'meta', text: `${info} · the official mark schemes, in the same order as the questions.` }, { t: 'note', text: (withSol ? solNote + ' ' : '') + copy },
       ...pick.flatMap((r, i) => [{ t: 'head', text: `Question ${i + 1}${r[6] ? ` (${r[6]} marks)` : ''}`, sub: src(r) },
         r[10] & PIC_MS ? { t: 'img', src: `pp/ms/${r[9]}.webp` } : { t: 'note', text: msMissing(r) },
-        ...(withSol && SOL()[r[9]] ? [{ t: 'steps', title: 'Worked solution (written with AI help, checked against the official mark scheme)', items: SOL()[r[9]] }] : [])])];
+        ...(withSol && SOL()[r[9]] ? [{ t: 'steps', title: 'Worked solution ' + solMeta(r[9]), items: SOL()[r[9]] }] : [])])];
     return { paper, mark, paperBlocks, markBlocks };
   }
   function sheetHTML(pick, title, withMs, withSol) {   // question paper with the mark schemes at the end (📚 Learn a topic → print this topic)

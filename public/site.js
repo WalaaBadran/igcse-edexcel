@@ -46,7 +46,7 @@ ${location.origin}`;
         if (j.site !== 'year8-maths' || !j.data) throw new Error('not ours');
         Object.entries(j.data).forEach(([k, v]) => { if (k.startsWith('y8m-')) localStorage.setItem(k, v); });
         if (note) note.textContent = '✓ Progress restored. Reloading…'; setTimeout(() => location.reload(), 700);
-      } catch (er) { if (note) note.textContent = 'That file is not a IGCSE Edexcel Maths backup.'; }
+      } catch (er) { if (note) note.textContent = 'That file is not an IGCSE Edexcel Maths backup.'; }
     };
     r.readAsText(e.target.files[0]); e.target.value = '';
   });

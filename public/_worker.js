@@ -520,7 +520,7 @@ async function visitsHook(request, env, ctx) {
     if (env.DB) try {
       cpi = await cpOwner(env.DB);
       cpT = await env.DB.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(pass), 0) AS p FROM vdev WHERE site != 'igcse-edexcel' AND day = ?1").bind(vDay()).first() || cpT;
-      cp3 = await env.DB.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(pass), 0) AS p FROM vdev WHERE site != 'igcse-edexcel'").first() || cp3;
+      cp3 = await env.DB.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(pass), 0) AS p FROM vdev WHERE site != 'igcse-edexcel' AND day >= ?1").bind(vDay(2)).first() || cp3;   // today and the 2 days before (vdev keeps 4)
     } catch (e) {}
     const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const KIND = { mistake: '🚩 Mistake', idea: '💡 Idea to improve', dislike: '👎 Doesn’t like', other: '💬 Message' };
@@ -600,7 +600,7 @@ select{font:inherit;padding:7px;border-radius:8px}.newlink{background:var(--card
 td.l{text-align:left;white-space:normal}</style></head><body>
 <h1>📈 Visits${waiting ? ` <small style="color:var(--brand)">· 💬 ${waiting} new</small>` : ''}</h1>
 <p style="margin:0 0 8px" class="small">🔄 Updated at <b>${new Date(Date.now() + 4 * 3600e3).toISOString().slice(11, 19)}</b> (UAE time). This page refreshes by itself every 30 seconds while it is on screen, and as soon as you come back to it. <a href="#" id="rnow">↻ Refresh now</a></p>
-<div class="nav"><a href="#msgs">💬 Messages${waiting ? ` (${waiting} new)` : ''}</a><a href="#fb">💡 Ideas &amp; dislikes</a><a href="#use">📊 What they use</a><a href="#show">👀 Show links</a><a href="#visits">📈 Visits</a><a href="/__visits/papers?k=${encodeURIComponent(k)}">📚 Maths papers</a></div><p>Each box: how many <b>devices</b> opened that site that day (UAE time). A device counts once a day per site, however many times it opens it. <small>"· 3 used"</small> = how many of them really used it (2 minutes or more of tapping, typing, scrolling, watching a video or listening). Day total = all the sites' boxes for that day added up (user 2026-10-20: "total views for each day"); a student who used 3 sites counts 3 there. Total row = each site's days added up. Counting started on 19 Oct 2026. Only you have this link: please keep it private.</p>
+<div class="nav"><a href="#msgs">💬 Messages${waiting ? ` (${waiting} new)` : ''}</a><a href="#fb">💡 Ideas &amp; dislikes</a><a href="#use">📊 What they use</a><a href="#show">👀 Show links</a><a href="#visits">📈 Visits</a><a href="/__visits/papers?k=${encodeURIComponent(k)}">📚 Maths papers</a></div><p>Each box: how many <b>devices</b> opened that site that day (UAE time). A device counts once a day per site, however many times it opens it. <small>"· 3 used"</small> = how many of them really used it (2 minutes or more of tapping, typing, scrolling, watching a video or listening). Day total = all the sites' boxes for that day added up; a student who used 3 sites counts 3 there. Total row = each site's days added up. Counting started on 19 Oct 2026. Only you have this link: please keep it private.</p>
 <p id="me" style="color:var(--brand);font-weight:600"></p>
 <script>(function () { var own = false; try { own = localStorage.getItem('vown') === '1'; } catch (e) {}
   var me = document.getElementById('me'), go = ${JSON.stringify(meUrl)}, done = /[?&]done=1/.test(location.search);

@@ -3,7 +3,7 @@
    A short diagnostic (2 questions per topic, from this site's quiz bank in window.RVD) sets Plan A, B or C, then a
    day-by-day plan runs to the exam date. Weakest topics come first and get extra time.
    When the assessment's topics change (new study guide), the plan asks for a new diagnostic.
-   PLAN.view(sub, cfg): cfg = { name, exam: 'YYYY-MM-DD' or '', learn, quiz, exam_q, paper } (routes without '#/'). */
+   PLAN.view(sub, cfg): cfg = { name, exam: 'YYYY-MM-DD' or '', learn, quiz, exam_q, paper, empty: message when there are no topics } (routes without '#/'). */
 (function () {
   const D = window.RVD; if (!D) return;
   const EXAM_TAG = (document.currentScript && document.currentScript.dataset.exam) || '';
@@ -228,6 +228,8 @@
     cfg = cfg || {};
     const s = get();
     if (sub === 'tips') return tipsHTML();
+    // no topics to plan yet (Year 9 Maths before a group is chosen): say what to do instead of a check with 0 questions
+    if (!TOPICS.length) return `<h1>📅 My study plan</h1><div class="card"><p style="margin:0">${cfg.empty || 'The topics for the next assessment are not on this site yet, so a plan cannot be made. Please check again soon.'}</p></div>`;
     if (cfg.manual && !myDate() && s.sig !== SIG && !['check', 'go', 'result', 'date', 'skip'].includes(sub)) {   // non-core: the date comes first
       const ex0 = examFor(cfg);
       return `<h1>📅 My study plan</h1><p class="muted">Step 1 of 2: your exam date. Step 2: a quick check.</p><div class="card">${dateEditor(Object.assign({}, cfg, ex0))}</div>
@@ -332,13 +334,15 @@
     d.innerHTML = `<div class="pl-sp-in"><div class="pl-sp-sub">${esc(site)}</div>`
       + (left === null ? '<div class="pl-sp-big" style="font-size:80px">📅</div><div class="pl-sp-txt">Is your exam date out?</div><div class="pl-sp-date">Enter your exam date, make your study plan, and get ready for the exam.</div>'
         : (left === 0 ? '<div class="pl-sp-big">TODAY</div><div class="pl-sp-txt">is your exam day. Good luck! 🍀</div>'
+        : left === 1 ? '<div class="pl-sp-big" style="font-size:64px">TOMORROW</div><div class="pl-sp-txt">is your exam. One last revision today!</div>'
         : `<div class="pl-sp-big">${left}</div><div class="pl-sp-txt">day${left === 1 ? '' : 's'} until your exam</div>`)
         + `<div class="pl-sp-date">${nice(when)}</div>`)
+      + (soon && window.SPLASH_NOTE ? `<div class="pl-sp-tip" style="font-weight:600">${window.SPLASH_NOTE}</div>` : '')
       + `<div class="pl-sp-tip">${left === null ? 'Not sure of the date yet? Ask your teacher, then come back.' : left === 0 ? 'Eat breakfast, drink water, and read every question twice.' : soon ? 'It\'s exam week: follow your plan and read the exam-week tips.' : 'A little every day: follow your study plan.'}</div>
 <div class="pl-sp-btns"><a class="pl-sp-go" href="#/plan${left === null ? '/date' : soon ? '/tips' : ''}">${left === null ? '📅 Enter my exam date' : soon ? '🌟 Exam-week tips' : '📅 Open my study plan'}</a><button type="button" class="pl-sp-x">Continue</button></div></div>`;
     const keys = e => { if (e.key === 'Escape') close(); };
     const close = () => { d.remove(); document.removeEventListener('keydown', keys); };
-    d.querySelector('.pl-sp-x').onclick = close; d.querySelector('.pl-sp-go').onclick = close;
+    d.querySelector('.pl-sp-x').onclick = close; d.querySelectorAll('a').forEach(x => { x.onclick = close; });
     document.addEventListener('keydown', keys);
     document.body.appendChild(d); d.querySelector('.pl-sp-x').focus();
   }

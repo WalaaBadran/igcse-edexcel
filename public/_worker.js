@@ -211,7 +211,9 @@ async function flagApi(request, env, url) {   // the older 🚩 button (pages st
 // No cookies, no IP addresses, nothing that identifies anyone. Owner page: /__visits?k=<private key> (key kept off GitHub;
 // only its hash is here). The owner's own devices are not counted ("don't count my visits"): the owner page sends the device
 // once through /__me on every site, which saves 'vown' in that site's browser storage, and help.js then sends no ping.
-const VISITS_HASH = 'a3c878a98dd187788a3e71c30df3c20b4bf227e80e6a39854b1aa84334970441';
+// two owner keys open the private page (23 Oct 2026): the laptop's key (audit-team/owner-visits.key) and the newer key a
+// cloud session made for Year 8 English; both work on every site, so the device set-up (/__me) goes through all 11 sites
+const VISITS_HASHES = ['a3c878a98dd187788a3e71c30df3c20b4bf227e80e6a39854b1aa84334970441', 'd80298765ede9f05e36f4b9416ecc97f3b20a7168fc3d010bf9510ecc696c836'];
 const VSITES = { 'year9-english': 'Y9 English', 'year8-english': 'Y8 English', 'year9-science': 'Y9 Science', 'year8-science': 'Y8 Science',
   'year9-geography': 'Y9 Geography', 'year8-geography': 'Y8 Geography', 'year9-history': 'Y9 History', 'year8-history': 'Y8 History',
   'year9-math': 'Y9 Maths', 'year8-math': 'Y8 Maths', 'igcse-edexcel': 'IGCSE Maths (shared)' };
@@ -289,7 +291,7 @@ const OWNER_PAPERS = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf
 const VKEEP = 3;   // how many show links are kept (the newest)
 const vHost = s => VHOST[s] || `${s}.deirarevise.workers.dev`;
 const vsha = async t => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t)))].map(b => b.toString(16).padStart(2, '0')).join('');
-const vOwner = async k => (await vsha('deirarevise-visits:' + k)) === VISITS_HASH;
+const vOwner = async k => VISITS_HASHES.includes(await vsha('deirarevise-visits:' + k));
 // a rough device type for the owner page, e.g. "Phone · iPhone · Safari" (nothing that identifies a person)
 const vKind = ua => {
   const type = /iPad|Tablet/i.test(ua) ? 'Tablet' : /Mobi|iPhone|Android/i.test(ua) ? 'Phone' : 'Computer';

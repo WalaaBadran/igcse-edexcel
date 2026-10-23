@@ -218,7 +218,7 @@ const VSITES = { 'year9-english': 'Y9 English', 'year8-english': 'Y8 English', '
 let visitsReady = false;
 // ⚡ VSCHEMA: the tables below are made once; after that ONE quick check replaces ~16 table statements each time a server copy
 // starts (user 2026-10-21: show links were slow, about 10 s from the year page to a subject). Change it whenever a table changes.
-const VSCHEMA = 'v11';
+const VSCHEMA = 'v12';
 async function visitsTable(db) {
   if (visitsReady) return;
   try { const r = await db.prepare("SELECT val FROM vkeys WHERE name = 'schema-visits'").first(); if (r && r.val === VSCHEMA) { visitsReady = true; return; } } catch (e) {}
@@ -238,6 +238,8 @@ async function visitsTable(db) {
   await db.prepare('CREATE TABLE IF NOT EXISTS vpassuse (pass TEXT, at INTEGER, site TEXT, kind TEXT)').run();
   // v8 (user 2026-10-21: "did the friend use the link, for how long, what did he check, which pages"): time and pages of each go
   for (const [c, t] of [['part', 'TEXT'], ['secs', 'INTEGER']]) { try { await db.prepare(`ALTER TABLE vpassuse ADD COLUMN ${c} ${t}`).run(); } catch (e) {} }
+  // v12 (23 Oct 2026): 👥 the class goal: how many answers the whole class gave on each site each week (totals only)
+  await db.prepare('CREATE TABLE IF NOT EXISTS vgoal (site TEXT, week TEXT, n INTEGER, PRIMARY KEY (site, week))').run();
   await db.prepare('CREATE TABLE IF NOT EXISTS vkeys (name TEXT PRIMARY KEY, val TEXT)').run();
   await db.prepare("INSERT OR REPLACE INTO vkeys (name, val) VALUES ('schema-visits', ?1)").bind(VSCHEMA).run();
   visitsReady = true;
@@ -293,6 +295,9 @@ const vKind = ua => {
 };
 const vTime = () => new Date(Date.now() + 4 * 3600e3).toISOString().slice(11, 16);   // UAE time
 const vDay = (back = 0) => new Date(Date.now() + 4 * 3600e3 - back * 864e5).toISOString().slice(0, 10);   // UAE date
+const vWeek = (back = 0) => { const d = new Date(Date.now() + 4 * 3600e3 - back * 7 * 864e5); d.setUTCDate(d.getUTCDate() - (d.getUTCDay() + 6) % 7); return d.toISOString().slice(0, 10); };   // the Monday of the UAE week
+// 👥 this week's class goal: 10% more than last week's answers, rounded to 50 (at least 200; 300 in the first week)
+const vGoalOf = last => Math.max(200, last ? Math.ceil(last * 1.1 / 50) * 50 : 300);
 async function visitsHook(request, env, ctx) {
   const url = new URL(request.url);
   // 🔑 class pass (CLASSPASS block below): its own routes, and the lock when the owner turns it on; never blocks on an error
@@ -335,6 +340,24 @@ async function visitsHook(request, env, ctx) {
     })().catch(() => {});
     if (ctx && ctx.waitUntil) ctx.waitUntil(job); else await job;
     return new Response(null, { status: 204, headers: { 'cache-control': 'no-store' } });
+  }
+  // 👥 class goal (fun.js): add answers to this week's total for this site (at most 40 at a time), or read the total and the goal
+  if (url.pathname === '/__q' && request.method === 'POST') {
+    const site = url.hostname.split('.')[0], n = Math.min(Math.max(Math.round(+url.searchParams.get('n') || 0), 0), 40);
+    if (env.DB && VSITES[site] && n && request.headers.get('sec-fetch-site') !== 'cross-site') {
+      const job = (async () => { await visitsTable(env.DB); await env.DB.prepare('INSERT INTO vgoal (site, week, n) VALUES (?1, ?2, ?3) ON CONFLICT (site, week) DO UPDATE SET n = n + ?3').bind(site, vWeek(), n).run(); })().catch(() => {});
+      if (ctx && ctx.waitUntil) ctx.waitUntil(job); else await job;
+    }
+    return new Response(null, { status: 204, headers: { 'cache-control': 'no-store' } });
+  }
+  if (url.pathname === '/__goal' && request.method === 'GET') {
+    const site = url.hostname.split('.')[0]; let n = 0, last = 0;
+    if (env.DB && VSITES[site]) try {
+      await visitsTable(env.DB);
+      const r = (await env.DB.prepare('SELECT week, n FROM vgoal WHERE site = ?1 AND week IN (?2, ?3)').bind(site, vWeek(), vWeek(1)).all()).results || [];
+      r.forEach(x => { if (x.week === vWeek()) n = x.n; else last = x.n; });
+    } catch (e) {}
+    return new Response(JSON.stringify({ week: vWeek(), n, last, goal: vGoalOf(last) }), { headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
   }
   if (url.pathname === '/__me' && request.method === 'GET') {   // mark this device as the owner's on every site, one after another
     const k = url.searchParams.get('k') || '', list = Object.keys(VSITES), i = +url.searchParams.get('i') || 0, back = url.searchParams.get('b') || '';
@@ -508,13 +531,14 @@ async function visitsHook(request, env, ctx) {
     if (env.DB) { await visitsTable(env.DB); rows = (await env.DB.prepare('SELECT day, site, opens, devices FROM visits ORDER BY day DESC').all()).results || [];
       devs = (await env.DB.prepare('SELECT day, site, at, kind, secs, pages FROM vdev WHERE day >= ?1 ORDER BY day DESC, at DESC').bind(vDay(1)).all()).results || []; }   // today and yesterday only (user 2026-10-21); older days are in the counts
     // 💬 messages, 📊 parts used (last 7 days), 👀 show links (v6, 2026-10-21)
-    let chats = [], uses = [], passes = [], puse = [];
+    let chats = [], uses = [], passes = [], puse = [], goals = [];
     if (env.DB) {
       await chatSetup(env.DB);
       chats = (await env.DB.prepare('SELECT id, thread, site, sender, kind, page, url, msg, created, done FROM chat ORDER BY id DESC LIMIT 2000').all()).results || [];
       uses = (await env.DB.prepare('SELECT site, part, SUM(n) AS n FROM vuse WHERE day >= ?1 GROUP BY site, part ORDER BY n DESC').bind(vDay(6)).all()).results || [];
       passes = (await env.DB.prepare(`SELECT rowid AS id, tok, site, uses, created FROM vpass WHERE created > ?1 ORDER BY created DESC LIMIT ${VKEEP}`).bind(Date.now() - 14 * 864e5).all()).results || [];
       puse = (await env.DB.prepare('SELECT pass, at, site, kind, part, secs FROM vpassuse WHERE at > ?1 ORDER BY at').bind(Date.now() - 15 * 864e5).all()).results || [];
+      try { await visitsTable(env.DB); goals = (await env.DB.prepare('SELECT site, week, n FROM vgoal WHERE week >= ?1').bind(vWeek(1)).all()).results || []; } catch (e) {}   // 👥 class goal
     }
     // 🔑 class pass: the lock, the class links, and how many recent devices already have the pass
     let cpi = null, cpT = { n: 0, p: 0 }, cp3 = { n: 0, p: 0 };
@@ -629,6 +653,7 @@ ${opnRows.length ? `<p><b>❤️ What they think, and 📅 how often they use it
 ${fb.length ? `<div class="wrap"><table style="min-width:0"><tr><th>Site</th><th>🚩 Mistakes</th><th>➕ Add</th><th>🛠️ Better</th><th>❤️ Opinions</th><th>💬 Other</th><th>Still open</th></tr>${fb.map(([s, ...g]) => { const op = g.flat().filter(x => !x.done).length; return `<tr><td>${esc(VSITES[s])}</td>${g.map(l => `<td>${l.length}</td>`).join('')}<td>${op ? `<b style="color:#b42318">${op}</b>` : '0'}</td></tr>`; }).join('')}</table></div>
 ${fb.map(([s, ...g]) => `<details${g.flat().some(x => !x.done) ? ' open' : ''}><summary><b>${esc(VSITES[s])}</b></summary><ul>${g.flat().sort((a, b) => b.id - a.id).slice(0, 20).map(x => `<li>${x.done ? '<small>finished</small>' : '<b style="color:#b42318">open</b>'} · ${KIND[x.kind] || KIND.other}: “${esc(x.msg)}” <small>· page: ${esc(x.page || 'Home')} · ${when(x.created)}</small></li>`).join('')}</ul></details>`).join('')}` : '<p>None yet.</p>'}
 <h2 id="use">📊 What students use (last 7 days)</h2><p>How many times each part was opened, all devices together. No device numbers and no names: just totals. Your own devices are not counted.</p>
+${goals.length ? `<p><b>👥 Class goal: answers given this week</b> (questions answered, written answers checked, key terms… all students together; the goal is shown on each site's Home page):</p><div class="wrap" style="margin-bottom:12px"><table style="min-width:0"><tr><th>Site</th><th>This week</th><th>Goal</th><th>Last week</th></tr>${Object.keys(VSITES).filter(s => goals.some(g => g.site === s)).map(s => { const w = (goals.find(g => g.site === s && g.week === vWeek()) || {}).n || 0, l = (goals.find(g => g.site === s && g.week === vWeek(1)) || {}).n || 0; return `<tr><td>${esc(VSITES[s])}</td><td><b>${w}</b></td><td>${vGoalOf(l)}</td><td>${l}</td></tr>`; }).join('')}</table></div>` : ''}
 ${useRows.length ? `<div class="wrap"><table style="min-width:0"><tr><th>Site</th><th style="text-align:left">Parts opened (most used first)</th></tr>${useRows.map(([s, l]) => `<tr><td>${esc(VSITES[s])}</td><td class="l">${l.slice(0, 14).map(u => `${esc(uname(u.part))} <b>${u.n}</b>`).join(' · ')}</td></tr>`).join('')}</table></div>` : '<p>Nothing yet: counting started on 21 Oct 2026.</p>'}
 ${cpi ? `<h2 id="classpass">🔑 Class pass (no password)</h2><p>Every phone, tablet or computer that uses the sites gets a <b>class pass</b> on its own: nothing to type, no names, nothing for the students to do. When the lock is on, the sites open <b>only on devices with the pass</b>, so a site’s name written down and given to someone else does not open. Show links work as before.</p>
 <p>Devices that already have the pass: today <b>${cpT.p} of ${cpT.n}</b>, last 3 days <b>${cp3.p} of ${cp3.n}</b> (each site and day counted once; a device gets it on its first visit, so it shows from its next visit). Turn the lock on when this is close to all of them, for example after a week.</p>

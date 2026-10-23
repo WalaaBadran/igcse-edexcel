@@ -356,6 +356,9 @@ ${fixesHTML()}
      (one title or a list)]. STUDY CONTENT ONLY (user, 23 Oct 2026: "make what is new only for academic issues"): new questions,
      units and answers. Never list the site’s tools or features here (that makes the sites easy to copy), and never thank a student for flagging a mistake (user, 23 Oct 2026). */
   const NEWS = [
+    ['2026-10-23', '🏮 NEW: Lesson 5, Chinese and European exploration: Zheng He, Spain and Portugal, and the Treaty of Tordesillas. Notes, slides, quiz and test practice, with real historical sources and PEEL questions.', 'Year 8 History'],
+    ['2026-10-23', '🎖️ NEW: Lesson 5, How were soldiers recruited to fight in WWI? Posters, conscription and Indian soldiers, plus both cover-work booklets. Notes, slides, quiz and test practice, with real soldiers’ letters from 1915 and PEEL questions.', 'Year 9 History'],
+    ['2026-10-23', '📋 Your test: six 1-mark questions, one 6-mark question and one 8-mark question (20 marks). Test practice now has more questions like these, including short questions from Oak National Academy.', ['Year 8 History', 'Year 9 History']],
     ['2026-10-23', '🗝️ NEW in ⚡ Revise: Key terms. See a key term, type what it means, check it, then see the real meaning.', ['Year 9 Geography', 'Year 8 Geography', 'Year 9 History', 'Year 8 History', 'Year 9 Science', 'Year 8 Science', 'Year 9 English', 'Year 8 English']],
     ['2026-10-23', '📝 NEW in Exam questions: Test practice. Your teacher’s own questions from the lesson PowerPoints, from 1-mark to 8-mark questions, with answers.', ['Year 8 Science', 'Year 9 Science', 'Year 8 Geography', 'Year 8 History', 'Year 9 History']],
     ['2026-10-22', '📝 NEW in Exam questions: Test practice. Your teacher’s own questions from the lesson PowerPoints, from 1-mark to 8-mark questions, with answers.', 'Year 9 Geography'],

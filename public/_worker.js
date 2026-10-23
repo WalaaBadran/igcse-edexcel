@@ -298,6 +298,9 @@ const vKind = ua => {
   return `${type} · ${os} · ${br}`;
 };
 const vTime = () => new Date(Date.now() + 4 * 3600e3).toISOString().slice(11, 16);   // UAE time
+// 📱 the owner's devices (user, 23 Oct 2026: "recognize my phone so not counted"): besides 'vown' in the browser's storage (which
+// iPhone Safari may clear after 7 days without a visit), /__me sets a long-lasting cookie that the counter checks on the server
+const vMine = request => /(?:^|;\s*)vown=1(?:;|$)/.test(request.headers.get('cookie') || '');
 const vDay = (back = 0) => new Date(Date.now() + 4 * 3600e3 - back * 864e5).toISOString().slice(0, 10);   // UAE date
 const vWeek = (back = 0) => { const d = new Date(Date.now() + 4 * 3600e3 - back * 7 * 864e5); d.setUTCDate(d.getUTCDate() - (d.getUTCDay() + 6) % 7); return d.toISOString().slice(0, 10); };   // the Monday of the UAE week
 // 👥 this week's class goal: 10% more than last week's answers, rounded to 50 (at least 200; 300 in the first week)
@@ -308,7 +311,7 @@ async function visitsHook(request, env, ctx) {
   try { const c = await cpHook(request, env, url); if (c) return c; } catch (e) {}
   if (url.pathname === '/__visit' && request.method === 'POST') {
     const site = url.hostname.split('.')[0];
-    if (!env.DB || !VSITES[site] || request.headers.get('sec-fetch-site') === 'cross-site') return new Response(null, { status: 204 });
+    if (!env.DB || !VSITES[site] || request.headers.get('sec-fetch-site') === 'cross-site' || vMine(request)) return new Response(null, { status: 204, headers: { 'cache-control': 'no-store' } });
     const dev = (url.searchParams.get('d') || '').slice(0, 64), day = vDay();
     if (VDLK[url.searchParams.get('dl')]) {   // ⬇️ a file downloaded, opened or printed: a total per day, site and file, no device number
       const dk = url.searchParams.get('dl'), f = vDlName(url.searchParams.get('f')), p = (url.searchParams.get('p') || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 30);
@@ -358,7 +361,7 @@ async function visitsHook(request, env, ctx) {
   // 👥 class goal (fun.js): add answers to this week's total for this site (at most 40 at a time), or read the total and the goal
   if (url.pathname === '/__q' && request.method === 'POST') {
     const site = url.hostname.split('.')[0], n = Math.min(Math.max(Math.round(+url.searchParams.get('n') || 0), 0), 40);
-    if (env.DB && VSITES[site] && n && request.headers.get('sec-fetch-site') !== 'cross-site') {
+    if (env.DB && VSITES[site] && n && request.headers.get('sec-fetch-site') !== 'cross-site' && !vMine(request)) {
       const job = (async () => { await visitsTable(env.DB); await env.DB.prepare('INSERT INTO vgoal (site, week, n) VALUES (?1, ?2, ?3) ON CONFLICT (site, week) DO UPDATE SET n = n + ?3').bind(site, vWeek(), n).run(); })().catch(() => {});
       if (ctx && ctx.waitUntil) ctx.waitUntil(job); else await job;
     }
@@ -381,7 +384,8 @@ async function visitsHook(request, env, ctx) {
     return new Response(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Visits</title>
 <p style="font:16px system-ui;padding:16px">Setting up this device (${i + 1} of ${list.length})…</p>
 <script>try { localStorage.setItem('vown', '1'); } catch (e) {} location.replace(${JSON.stringify(next)});</script>`,
-      { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-robots-tag': 'noindex, nofollow', 'referrer-policy': 'no-referrer' } });
+      { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-robots-tag': 'noindex, nofollow', 'referrer-policy': 'no-referrer',
+        'set-cookie': 'vown=1; Path=/; Max-Age=34560000; Secure; HttpOnly; SameSite=Lax' } });   // 📱 about 400 days on this site
   }
   // 💬 owner actions from the private page (forms, so they work without any script): reply, finish a conversation,
   // make or stop a "show link"

@@ -318,25 +318,22 @@ ${fixesHTML()}
   window.addEventListener('hashchange', stopSpeak);
 
   /* 🆕 What's new: shown on the Home page for 2 weeks after each change, newest first; only the 2 newest are open, the rest
-     fold under "More" so the box stays short on phones (2026-10-19). [date, text, only on sites whose title starts with this] */
+     fold under "More" so the box stays short on phones (2026-10-19). [date, text, only on sites whose title starts with this
+     (one title or a list)]. STUDY CONTENT ONLY (user, 23 Oct 2026: "make what is new only for academic issues"): new questions,
+     units, answers and corrections. Never list the site's tools or features here: that makes the sites easy to copy. */
   const NEWS = [
-    ['2026-10-21', '✅ Thank you to the student who flagged a mistake in ⏱️ Timed full answer (question 7)! It is fixed: when a quotation is nearly right, the site now shows the real words and what is different.', 'Year 9 English'],
-    ['2026-10-21', '🚩 NEW: the Report a mistake button in the bottom corner of every page: tell us about a mistake, an idea or something you don’t like. When we reply, the button blinks red and blue. Tap 👍 or 👎 at the bottom to say if a page helped.'],
-    ['2026-10-20', '🌸 NEW in 🎯 Practise: PETAL step by step. Practise each part of PETAL on its own with marking, including 🔗 L+: linking to Orwell’s intentions and the context.', 'Year 9 English'],
-    ['2026-10-20', '🤖 NEW: an AI helper. Stuck on something? Tap 🤖 Ask AI at the top of the screen and ask about the page you are on.', 'Year '],
-    ['2026-10-19', '🎟 NEW: Golden Ticket tasks. The school’s extra challenge tasks: print or do them, then hand them in to your teacher (in the menu).'],
-    ['2026-10-12', '🔥 NEW in ⚡ Revise: Challenge mode. No options: type the answer from memory, then check. Harder, and better for remembering.'],
-    ['2026-10-12', '📌 NEW: Sticky notes and 📝 My notes. Write your own notes on any page, then print or share them (buttons at the bottom of every page).'],
-    ['2026-10-11', '🎬 A short how-to video on the Help page. 🔔 Your study plan can now remind you every day, be printed, and 📤 share your week with your parent.'],
-    ['2026-10-11', '📅 NEW: your own Study plan. Do a quick check and get a day-by-day plan up to the exam.'],
-    ['2026-10-11', '🧭 An easier menu, with app-style buttons at the bottom on phones.'],
-    ['2026-10-11', '❓ A Help page, and 🚩 Flag a mistake, 🔊 Read aloud and A+ Bigger text at the bottom of every page.'],
-    ['2026-10-11', '⚡ A new Revise tab: 5 questions a day, a confidence quiz and a brain dump.', 'Year 9 Science'],
-    ['2026-10-11', '📱 You can now add it to your home screen and use it without internet.', 'Year 9 Science'],
+    ['2026-10-23', '📝 NEW in Exam questions: Test practice. Your teacher’s own questions from the lesson PowerPoints, from 1-mark to 8-mark questions, with answers.', ['Year 8 Science', 'Year 9 Science', 'Year 8 Geography', 'Year 8 History', 'Year 9 History']],
+    ['2026-10-22', '📝 NEW in Exam questions: Test practice. Your teacher’s own questions from the lesson PowerPoints, from 1-mark to 8-mark questions, with answers.', 'Year 9 Geography'],
+    ['2026-10-21', '✅ Thank you to the student who flagged a mistake in ⏱️ Timed full answer (question 7)! It is fixed.', 'Year 9 English'],
+    ['2026-10-20', '🌸 NEW: PETAL step by step. Practise each part of PETAL on its own, including 🔗 L+: linking to Orwell’s intentions and the context.', 'Year 9 English'],
+    ['2026-10-20', '✍️ 1-mark quiz questions are now written answers, like in your test, with marking.', ['Year 8 History', 'Year 9 History']],
+    ['2026-10-19', '📕 NEW: Textbook practice. The questions from your textbook, with the official answers.', ['Year 8 Science', 'Year 9 Science']],
+    ['2026-10-19', '🚀 NEW: Get ahead. The next units of the year, with questions, to start early.', ['Year 8 Science', 'Year 9 Science']],
   ];
+  const forSite = (only, site) => !only || [].concat(only).some(o => site.startsWith(o));
   function newsHTML() {
     const site = document.title, now = Date.now();
-    const items = NEWS.filter(([d, , only]) => (!only || site.startsWith(only)) && now - Date.parse(d) < 14 * 864e5);
+    const items = NEWS.filter(([d, , only]) => forSite(only, site) && now - Date.parse(d) < 14 * 864e5);
     if (!items.length || get('site-news-seen') === items[items.length - 1][0] + items.length) return '';
     const li = a => a.map(([, t]) => `<li>${t}</li>`).join(''), more = items.slice(2);
     return `<b>🆕 What's new</b><ul>${li(items.slice(0, 2))}</ul>${more.length ? `<details><summary class="small">More (${more.length})</summary><ul>${li(more)}</ul></details>` : ''}<button type="button" class="newsx" aria-label="Hide what's new">✕</button>`;
@@ -466,7 +463,7 @@ ${fixesHTML()}
       const h = newsHTML(); if (!h) return;
       const n = document.createElement('div'); n.className = 'newsbar'; n.innerHTML = h;
       n.querySelector('.newsx').onclick = () => {
-        const items = NEWS.filter(([d, , only]) => (!only || document.title.startsWith(only)) && Date.now() - Date.parse(d) < 14 * 864e5);
+        const items = NEWS.filter(([d, , only]) => forSite(only, document.title) && Date.now() - Date.parse(d) < 14 * 864e5);
         put('site-news-seen', items[items.length - 1][0] + items.length); n.remove();
       };
       app.insertBefore(n, app.firstChild);

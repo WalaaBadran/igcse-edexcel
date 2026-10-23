@@ -219,7 +219,7 @@ let visitsReady = false;
 // ⚡ VSCHEMA: the tables below are made once; after that ONE quick check replaces ~16 table statements each time a server copy
 // starts (user 2026-10-21: show links were slow, about 10 s from the year page to a subject). Change it whenever a table changes.
 const VSCHEMA = 'v13';
-const VDLK = Object.assign(Object.create(null), { dl: '⬇️ Downloaded', open: '📄 Opened', print: '🖨️ Printed' });   // ⬇️ kinds of file use (help.js fileUse)
+const VDLK = Object.assign(Object.create(null), { dl: '⬇️ Downloaded', file: '📄 Opened', print: '🖨️ Printed' });   // not 'open': a show link's 'open' row = a go started   // ⬇️ kinds of file use (help.js fileUse)
 const vDlName = f => String(f || '').replace(/[\u0000-\u001f<>"`\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
 async function visitsTable(db) {
   if (visitsReady) return;
@@ -385,7 +385,7 @@ async function visitsHook(request, env, ctx) {
   }
   // 💬 owner actions from the private page (forms, so they work without any script): reply, finish a conversation,
   // make or stop a "show link"
-  if (/^\/__visits\/(reply|done|pass|stop|reopen|solved|lockon|lockoff|joinnew|del)$/.test(url.pathname) && request.method === 'POST') {
+  if (/^\/__visits\/(reply|done|pass|stop|reopen|solved|lockon|lockoff|joinnew|del|delused)$/.test(url.pathname) && request.method === 'POST') {
     let f; try { f = await request.formData(); } catch (e) { return new Response('Bad request', { status: 400 }); }
     const k = String(f.get('k') || '');
     if (!env.DB || !(await vOwner(k))) return new Response('Not found', { status: 404, headers: { 'x-robots-tag': 'noindex' } });
@@ -425,6 +425,12 @@ async function visitsHook(request, env, ctx) {
     if (op === 'del') {   // 🗑 delete one show link and its records (it stops working)
       const row = await env.DB.prepare('SELECT tok FROM vpass WHERE rowid = ?').bind(Number(f.get('id')) || 0).first();
       if (row) { await env.DB.prepare('DELETE FROM vpassuse WHERE pass = ?').bind(row.tok).run(); await env.DB.prepare('DELETE FROM vpass WHERE tok = ?').bind(row.tok).run(); }
+      back += '#show';
+    }
+    if (op === 'delused') {   // 🗑 every used-up, stopped or expired show link at once (user 2026-10-23: "delete any link i will not open again")
+      const gone = 'SELECT tok FROM vpass WHERE uses <= 0 OR created <= ?1';
+      await env.DB.prepare(`DELETE FROM vpassuse WHERE pass IN (${gone})`).bind(Date.now() - 14 * 864e5).run();
+      await env.DB.prepare(`DELETE FROM vpass WHERE tok IN (${gone})`).bind(Date.now() - 14 * 864e5).run();
       back += '#show';
     }
     if (op === 'stop' || op === 'reopen') {   // ⏹ stop a link, or ↩ give a stopped / used-up link one more go (user 2026-10-21); both are noted
@@ -639,7 +645,7 @@ ${isOpen ? (canReply ? `<form method="post" action="/__visits/reply" class="rf">
     const pair = ([a]) => `<b>${a}</b>`;
     // ⬇️ files downloaded, opened or printed (students; show-link visits are in 👀 Show links); today's count also in the menu
     const dlToday = dls.filter(x => x.day === vDay()).reduce((a, x) => a + x.n, 0);
-    const dlHTML = dls.length ? `<div class="wrap"><table style="min-width:0"><tr><th>Last time</th><th>Site</th><th style="text-align:left">What</th><th>Times</th></tr>${dls.map(x => `<tr><td>${when(x.last)}</td><td>${esc(VSITES[x.site] || x.site)}</td><td class="l">${VDLK[x.kind] || ''}: <b>${esc(x.item)}</b>${x.part ? ` <small>· ${esc(uname(x.part))}</small>` : ''}</td><td><b>${x.n}</b>${x.day !== vDay() ? ` <small>on ${nice(x.day)}</small>` : ''}</td></tr>`).join('')}</table></div>` : '<p>Nothing yet: counting started on 23 Oct 2026.</p>';
+    const dlHTML = dls.length ? `<div class="wrap"><table style="min-width:0"><tr><th>Last time</th><th>Site</th><th style="text-align:left">What</th><th>Times</th></tr>${dls.map(x => `<tr><td>${when(x.last)}</td><td>${esc(VSITES[x.site] || x.site)}</td><td class="l">${VDLK[x.kind] || '📄 Opened'}: <b>${esc(x.item)}</b>${x.part ? ` <small>· ${esc(uname(x.part))}</small>` : ''}</td><td><b>${x.n}</b>${x.day !== vDay() ? ` <small>on ${nice(x.day)}</small>` : ''}</td></tr>`).join('')}</table></div>` : '<p>Nothing yet: counting started on 23 Oct 2026.</p>';
     const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${waiting ? `(${waiting}) ` : ''}Visits</title>
 <style>:root{--bg:#f4f6fb;--card:#fff;--ink:#1d2433;--muted:#5b6475;--line:#e4e7ec;--brand:#0E8F6E}
 @media (prefers-color-scheme:dark){:root{--bg:#12151c;--card:#1c212b;--ink:#e8ecf3;--muted:#9aa3b2;--line:#2c3340;--brand:#34D3A3}}
@@ -689,7 +695,8 @@ ${dlHTML}
 <h2 id="show">👀 Show links</h2><p>A link for someone outside the class, for example a friend, <b>to show them, not to share</b>. It works <b>only on the first device that opens it</b> (a forwarded copy will not open), it can be opened <b>twice only</b>, then it stops (and after 14 days). Choose a year group’s hub to show the hub page <b>and all its subject sites</b>: each go is one visit of about 6 hours, moving freely between them. While they use it, nothing is saved on their device, they are not counted, and the message buttons are hidden. Below you see, for each go: when it was opened, about how long it lasted on the subject sites, the pages looked at on each site, and any file they downloaded, opened or printed. The link page shows only the site’s name and an Open button. While they look, the address bar shows a private guest address that works only on their device and stops when the visit ends. Only your <b>3 newest</b> links are kept: making a new one deletes older ones (they stop working), and 🗑 Delete removes one at once. <b>Don’t press “Open” yourself to test a link</b>: the first device that presses it is the only one it will work on. (Students use the sites without a password, so someone who deliberately writes down a site’s name could still open it.)</p>
 <form method="post" action="/__visits/pass" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px">${hid('k', k)}<label for="ps">Show:</label><select id="ps" name="site">${Object.keys(VHUBS).map(s => `<option value="${s}">${esc(vPassName(s))}</option>`).join('')}</select><button type="submit">Make a show link</button></form>
 ${newLink ? `<div class="newlink"><b>Your new show link</b> (it is shown only now):<br><span id="nl">${esc(newLink)}</span><br><button type="button" id="cp" style="margin-top:8px">Copy the link</button> <span id="cpd" class="small"></span></div>` : ''}
-${passes.length ? `<div class="wrap" style="margin-top:10px"><table style="min-width:0"><tr><th>Link for</th><th>Made</th><th>Goes left</th><th style="text-align:left">Opened (UAE time) and sites visited</th><th></th></tr>${passes.map(p => `<tr><td>${esc(vPassName(p.site))}</td><td>${when(p.created)}</td><td>${p.uses > 0 ? p.uses + ' of 2' : 'used up / stopped'}</td><td class="l">${goes(p.tok)}</td><td>${p.uses > 0 ? `<form method="post" action="/__visits/stop" style="margin:0">${hid('k', k)}${hid('id', p.id)}<button type="submit" class="ghost">Stop it</button></form>` : `<form method="post" action="/__visits/reopen" style="margin:0">${hid('k', k)}${hid('id', p.id)}<button type="submit" class="ghost" title="The same link works one more time">↩ Reopen (1 more go)</button></form>`}<form method="post" action="/__visits/del" style="margin:6px 0 0" onsubmit="return confirm('Delete this show link? It stops working and its record is removed.')">${hid('k', k)}${hid('id', p.id)}<button type="submit" class="ghost" title="Remove it from the list; it stops working">🗑 Delete</button></form></td></tr>`).join('')}</table></div>` : ''}
+${passes.length ? `<div class="wrap" style="margin-top:10px"><table style="min-width:0"><tr><th>Link for</th><th>Made</th><th>Goes left</th><th style="text-align:left">Opened (UAE time) and sites visited</th><th></th></tr>${passes.map(p => `<tr><td>${esc(vPassName(p.site))}</td><td>${when(p.created)}</td><td>${p.uses > 0 ? p.uses + ' of 2' : 'used up / stopped'}</td><td class="l">${goes(p.tok)}</td><td>${p.uses > 0 ? `<form method="post" action="/__visits/stop" style="margin:0">${hid('k', k)}${hid('id', p.id)}<button type="submit" class="ghost">Stop it</button></form>` : `<form method="post" action="/__visits/reopen" style="margin:0">${hid('k', k)}${hid('id', p.id)}<button type="submit" class="ghost" title="The same link works one more time">↩ Reopen (1 more go)</button></form>`}<form method="post" action="/__visits/del" style="margin:6px 0 0">${hid('k', k)}${hid('id', p.id)}<button type="submit" class="ghost" data-sure="Tap again to delete" title="Remove it from the list; it stops working">🗑 Delete</button></form></td></tr>`).join('')}</table></div>
+${passes.some(p => p.uses <= 0) ? `<form method="post" action="/__visits/delused" style="margin:10px 0 0">${hid('k', k)}<button type="submit" class="ghost" data-sure="Tap again: delete all used-up links">🗑 Delete all used-up / stopped links</button></form>` : ''}` : ''}
 <h2 id="visits">📈 Visits</h2>
 <div class="wrap"><table><tr><th>Day</th>${sites.map(s => `<th>${VSITES[s]}</th>`).join('')}<th>Day total</th></tr>
 ${days.length ? days.map(d => `<tr><td>${nice(d)}</td>${sites.map(s => cell(d, s)).join('')}<td><b>${sum(rows.filter(r => r.day === d))[0]}</b>${used2(d) ? `<small> · ${used2(d)} used</small>` : ''}</td></tr>`).join('') : `<tr><td colspan="${sites.length + 2}">No visits counted yet. Open any site, then refresh this page.</td></tr>`}
@@ -699,7 +706,7 @@ ${days.length ? days.map(d => `<tr><td>${nice(d)}</td>${sites.map(s => cell(d, s
 ${devs.length ? devs.map(r => `<tr><td>${nice(r.day)}</td><td>${VSITES[r.site] || r.site}</td><td>${r.at || '<small>before times were saved</small>'}</td><td>${r.kind || '<small>not saved</small>'}</td><td>${mins(r)}</td><td>${r.pages || 1}</td></tr>`).join('') : '<tr><td colspan="6">No devices yet.</td></tr>'}</table></div>
 <p style="margin-top:12px">Open this page once on each phone or laptop you use, and your visits on it stop being counted (numbers up to 19 Oct may include yours). A phone in private mode, or the same phone in a different browser, counts as another device. Cloudflare Web Analytics (dash.cloudflare.com) also has visit numbers; it counts everyone, you too.</p>
 <script>(function () {   // refresh every 30 seconds, but never while you are typing a reply
-  var busy = function () { return [].some.call(document.querySelectorAll('textarea'), function (t) { return t.value.trim() || t === document.activeElement; }); };
+  var busy = function () { return !!document.querySelector('[data-armed]') || [].some.call(document.querySelectorAll('textarea'), function (t) { return t.value.trim() || t === document.activeElement; }); };
   var fresh = function () { location.reload(); };
   setInterval(function () { if (!busy() && document.visibilityState === 'visible') fresh(); }, 30000);
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible' && !busy()) fresh(); });   // coming back to this tab
@@ -712,6 +719,11 @@ ${devs.length ? devs.map(r => `<tr><td>${nice(r.day)}</td><td>${VSITES[r.site] |
     var b = e.target.closest && e.target.closest('[data-copy]'); if (!b) return;
     var t = document.getElementById(b.getAttribute('data-copy')).textContent, d = document.getElementById('jd');
     try { navigator.clipboard.writeText(t).then(function () { d.textContent = 'Copied'; }, function () { d.textContent = 'Select the link and copy it'; }); } catch (er) { d.textContent = 'Select the link and copy it'; }
+  });
+  document.addEventListener('click', function (e) {   // 🗑 delete buttons: the first tap asks "Tap again", the second deletes (no pop-up,
+    var b = e.target.closest && e.target.closest('[data-sure]'); if (!b) return;   // some browsers block yes/no pop-ups)
+    if (b.getAttribute('data-armed') === '1') return;
+    e.preventDefault(); b.setAttribute('data-armed', '1'); b.textContent = b.getAttribute('data-sure'); b.style.background = '#b42318'; b.style.color = '#fff';
   });
   var cp = document.getElementById('cp');
   if (cp) cp.onclick = function () {

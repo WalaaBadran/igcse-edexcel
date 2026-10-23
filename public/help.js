@@ -469,7 +469,7 @@ ${fixesHTML()}
         let n = ''; try { n = decodeURIComponent(u.pathname.split('/').pop() || ''); } catch (e) { n = u.pathname.split('/').pop() || ''; }
         const pp = u.pathname.match(/Paper-(\w+)/i); return (pp && n.indexOf(pp[1]) < 0 ? 'Paper ' + pp[1] + ' · ' : '') + n;
       };
-      const linkUse = a => { if (a.hasAttribute('download')) fileUse('dl', nameOf(a)); else if (FILE.test((a.href || '').split('#')[0])) fileUse('open', nameOf(a)); };
+      const linkUse = a => { if (a.hasAttribute('download')) fileUse('dl', nameOf(a)); else if (FILE.test((a.href || '').split('#')[0])) fileUse('file', nameOf(a)); };
       document.addEventListener('click', e => {   // a tap on a download or file link
         if (!e.isTrusted) return;
         const a = e.target.closest && e.target.closest('a[href]'); if (a) linkUse(a);

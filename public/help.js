@@ -70,7 +70,7 @@
       ['2026-10-11', 'Some graph and pyramid questions had no figure, and mark schemes were not labelled.', 'The figures now appear with their questions, and mark schemes say "official" or "suggested".']
     ],
     'Year 9 English': [
-      ['2026-10-21', 'Timed full answer (a student flagged it): a quotation with one word missing or changed was only called “not in the text”, so it looked like a mistake by the site.', 'The site now shows the real words and what is different (for example “Missing: being”), and a quotation with a small typing slip still counts, with a spelling note.'],
+      ['2026-10-21', 'Timed full answer: a quotation with one word missing or changed was only called “not in the text”, so it looked like a mistake by the site.', 'The site now shows the real words and what is different (for example “Missing: being”), and a quotation with a small typing slip still counts, with a spelling note.'],
       ['2026-10-12', '"Check my writing" only recognised a few set words, so correct answers in other words could get a ✗.', 'It now also accepts other ways of saying it (for example shows, portrays, makes us feel, on the other hand, as a result), and the quotation memory game accepts a one-letter spelling slip.'],
       ['2026-10-11', 'The automatic key-word check did not work for most question types.', 'Fixed for every question; it now recognises more methods (tricolon, irony, sensory language, direct address) and \'single\' quotation marks.'],
       ['2026-10-11', 'Writing times looked like official exam timings.', 'Labelled "suggested". Unseen passages are labelled "extra skills practice", not assessment texts.']
@@ -98,7 +98,7 @@
     if (!list.length) return '';
     const nice = d => new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
     return `<div class="card" id="corrections" style="margin-top:12px"><details><summary><h3 style="display:inline">✅ Corrections made (${list.length})</h3></summary>
-  <p class="small muted" style="margin:8px 0">Mistakes found by checks and readers, and what the site says now. Thank you for flagging them.</p>
+  <p class="small muted" style="margin:8px 0">Mistakes that were found, and what the site says now.</p>
   <ul style="margin:0;padding-left:20px;line-height:1.55" class="small">${list.map(([d, was, now]) => `<li style="margin:0 0 8px"><b>${nice(d)}</b>: ${was}<br><span class="good" style="color:var(--good,#15803D)">Now:</span> ${now}</li>`).join('')}</ul></details></div>`;
   }
   function view(groups, o) {

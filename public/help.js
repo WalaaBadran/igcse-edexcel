@@ -233,7 +233,8 @@ ${fixesHTML()}
     document.documentElement.style.setProperty('--chatnav', h + 'px');
   }
   function chatClose() { const w = document.querySelector('body > .chatside'); if (w) { w.remove(); checkReplies(); } paintReplies(); }   // closing checks at once
-  function chat(mode) {   // mode: '' (the button: the student chooses) or a kind, e.g. 'improve' after 👎
+  if (!GUEST) window.TELLUS = (kind, pre) => chat(kind || '', pre);   // e.g. ⚡ Revise: "🚩 Report a mistake in this question"
+  function chat(mode, pre) {   // mode: '' (the button: the student chooses) or a kind, e.g. 'improve' after 👎; pre: a message to start with
     chatClose();
     let kind = mode, pick = {};   // nothing is chosen until the student taps, unless they came from 👎
     const w = document.createElement('section'); w.className = 'chatside'; w.setAttribute('role', 'dialog'); w.setAttribute('aria-label', 'Tell us: message the person who made this site');
@@ -283,6 +284,7 @@ ${fixesHTML()}
         .catch(() => { note.textContent = 'It did not send (no internet?). Your text is still here: try again when you are online.'; btn.disabled = false; btn.textContent = '📨 Send'; });
     }
     if (mode) show(mode); else w.querySelector('.saycard').focus();
+    if (mode && pre) { const ta = form.querySelector('textarea'); if (ta) { ta.value = pre; ta.focus(); ta.setSelectionRange(pre.length, pre.length); } }
   }
   // replies appear without refreshing (user 2026-10-21: "make the reply appear instantly if i solved instantly"): checked when a
   // page opens, every 10 s while the chat is open (the reply is added to the conversation), every 30 s while the page is on

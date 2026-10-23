@@ -139,8 +139,8 @@ ${window.ASK_AI ? `<div class="card" style="margin-top:12px"><h3>🤖 Stuck? Ask
     ${window.ASK_AI ? '<li>The <b>🤖 Ask AI</b> helper uses a free AI model (Google’s open Gemma model, run by Cloudflare). Each question is checked for safety first, it only helps with school work, and this site does <b>not save</b> questions or answers. A daily limit keeps it free.</li>' : ''}
     ${o.claude ? '<li>Some writing tasks have an optional button that copies the answer so it can be pasted into Claude (claude.ai) for feedback. Nothing is sent unless someone chooses to do this. Claude accounts are for adults (18+), so a parent should do this step.</li>' : ''}
   </ul></div>
-<div class="card" style="margin-top:12px"><h3>💬 Your say</h3>
-  <p style="margin:0">Tap the <b>💬 Your say</b> button in the bottom corner of any page: 🚩 tell us about a mistake, ➕ ask for something to be added, ❤️ say what you think of the site, 📅 tell us how often you use it, or 🛠️ say what would make it better. It goes straight to the parent who made this site, with the page you were on. When they reply, the button blinks red and blue: open it to read the reply. Your messages stay there on this device. You can also tap 👍 or 👎 at the bottom of a page to say if it helped you.</p></div>
+<div class="card" style="margin-top:12px"><h3>💡 Tell us</h3>
+  <p style="margin:0">Tap <b>💡 Tell us</b> at the top of any page: 🚩 tell us about a mistake, ➕ ask for something to be added, ❤️ say what you think of the site, 📅 tell us how often you use it, or 🛠️ say what would make it better. It goes straight to the parent who made this site, with the page you were on. When they reply, the button blinks red and blue: open it to read the reply. Your messages stay there on this device. You can also tap 👍 or 👎 at the bottom of a page to say if it helped you.</p></div>
 ${fixesHTML()}
 <div class="card" id="declaration" style="margin-top:12px"><h3>📜 Declaration</h3>
   <ul style="margin:6px 0 0;padding-left:20px;line-height:1.6" class="small">
@@ -211,12 +211,16 @@ ${fixesHTML()}
       const g = document.createElement('div'); g.className = 'guestbadge'; g.setAttribute('role', 'note');
       g.textContent = '👀 Guest view, for you only · please don’t share'; document.body.appendChild(g); chatPlace();
     }
-    if (GUEST || document.querySelector('body > .chattab')) return;
+    if (GUEST || document.querySelector('.chattab')) return;
     const t = document.createElement('button'); t.type = 'button'; t.className = 'chattab';
-    t.setAttribute('aria-label', 'Your say: a mistake, an idea or what you think, to the person who made this site');
-    t.innerHTML = '<span class="chattab-i" aria-hidden="true">💬</span><span class="chattab-t">Your say</span>';
+    t.setAttribute('aria-label', 'Tell us: a mistake, an idea or what you think, to the person who made this site');
+    t.innerHTML = '<span class="chattab-i" aria-hidden="true">💡</span><span class="chattab-t">Tell us</span>';
     t.onclick = () => (document.querySelector('body > .chatside') ? chatClose() : chat(''));
-    document.body.appendChild(t);
+    // 💡 Tell us sits in the top bar, with its name, next to 🤖 Ask AI (user, 23 Oct 2026: "bigger button with its name on top
+    // of the page"; the corner button was not noticed). A page without a top bar keeps the corner button.
+    const bar = document.querySelector('header .bar');
+    if (bar) { t.classList.add('chattop'); bar.insertBefore(t, bar.querySelector('.ask-fab')); document.documentElement.classList.add('chat-top'); }
+    else document.body.appendChild(t);
     chatPlace(); addEventListener('resize', chatPlace);
     paintReplies();
   }
@@ -232,8 +236,8 @@ ${fixesHTML()}
   function chat(mode) {   // mode: '' (the button: the student chooses) or a kind, e.g. 'improve' after 👎
     chatClose();
     let kind = mode, pick = {};   // nothing is chosen until the student taps, unless they came from 👎
-    const w = document.createElement('section'); w.className = 'chatside'; w.setAttribute('role', 'dialog'); w.setAttribute('aria-label', 'Your say: message the person who made this site');
-    w.innerHTML = `<div class="chathead"><b>💬 Your say</b><button type="button" class="chatx" aria-label="Close">✕</button></div>
+    const w = document.createElement('section'); w.className = 'chatside'; w.setAttribute('role', 'dialog'); w.setAttribute('aria-label', 'Tell us: message the person who made this site');
+    w.innerHTML = `<div class="chathead"><b>💡 Tell us</b><button type="button" class="chatx" aria-label="Close">✕</button></div>
       <p class="small muted" style="margin:2px 0 6px">Straight to the parent who made this site. No names. Your messages and the replies stay here.</p>
       <div class="chatlog" aria-live="polite"></div>
       <p class="saywhat">What would you like to tell us?</p>
@@ -273,7 +277,7 @@ ${fixesHTML()}
         .then(r => r.json().catch(() => ({})).then(j => ({ ok: r.ok, j })))
         .then(({ ok, j }) => {
           btn.disabled = false; btn.textContent = '📨 Send';
-          if (ok) { hotUntil = Date.now() + 10 * 60e3; form.hidden = true; form.innerHTML = ''; kind = ''; w.querySelectorAll('.saycard').forEach(x => x.setAttribute('aria-pressed', 'false')); chatLog(log, j.msgs); lastSeenTop = Math.max(0, ...(j.msgs || []).map(m => m.id)); note.innerHTML = '<b>✅ Sent. Thank you!</b> If the parent who made this site replies, the 💬 Your say button blinks red and blue: open it to read the reply.'; if (window.SITE_USE) SITE_USE('tool-msg'); return; }
+          if (ok) { hotUntil = Date.now() + 10 * 60e3; form.hidden = true; form.innerHTML = ''; kind = ''; w.querySelectorAll('.saycard').forEach(x => x.setAttribute('aria-pressed', 'false')); chatLog(log, j.msgs); lastSeenTop = Math.max(0, ...(j.msgs || []).map(m => m.id)); note.innerHTML = '<b>✅ Sent. Thank you!</b> If the parent who made this site replies, the 💡 Tell us button blinks red and blue: open it to read the reply.'; if (window.SITE_USE) SITE_USE('tool-msg'); return; }
           note.textContent = j.error || 'It did not send. Please try again in a minute.';
         })
         .catch(() => { note.textContent = 'It did not send (no internet?). Your text is still here: try again when you are online.'; btn.disabled = false; btn.textContent = '📨 Send'; });
@@ -304,16 +308,16 @@ ${fixesHTML()}
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkReplies(); });
   }
   function paintReplies() {   // a new reply: the button blinks red and blue with a badge until the chat is opened
-    const t = document.querySelector('body > .chattab'); if (!t) return;
+    const t = document.querySelector('.chattab'); if (!t) return;
     const open = !!document.querySelector('body > .chatside');
     t.classList.toggle('chatnew', newReplies > 0 && !open);
-    t.querySelector('.chattab-i').textContent = open ? '✕' : newReplies ? '📩' : '💬';
-    t.querySelector('.chattab-t').textContent = open ? 'Close' : newReplies ? (newReplies === 1 ? 'New reply! Tap to read' : newReplies + ' new replies! Tap to read') : 'Your say';
+    t.querySelector('.chattab-i').textContent = open ? '✕' : newReplies ? '📩' : '💡';
+    t.querySelector('.chattab-t').textContent = open ? 'Close' : newReplies ? (newReplies === 1 ? 'New reply! Tap to read' : newReplies + ' new replies! Tap to read') : 'Tell us';
     // a red number on the corner, like a phone's new-message badge (user 2026-10-21: "the color indicated a new message received")
     let n = t.querySelector('.chatcount');
     if (newReplies && !open) { if (!n) { n = document.createElement('span'); n.className = 'chatcount'; n.setAttribute('aria-hidden', 'true'); t.appendChild(n); } n.textContent = newReplies > 9 ? '9+' : String(newReplies); }
     else if (n) n.remove();
-    t.setAttribute('aria-label', newReplies ? 'You have a new reply: open the chat' : 'Your say: a mistake, an idea or what you think, to the person who made this site');
+    t.setAttribute('aria-label', newReplies ? 'You have a new reply: open the chat' : 'Tell us: a mistake, an idea or what you think, to the person who made this site');
   }
   /* storage that never breaks the page (private mode can block it) */
   const get = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
@@ -528,6 +532,17 @@ ${fixesHTML()}
 .chatbadge { display: inline-block; margin-left: 4px; padding: 1px 8px; border-radius: 999px; background: var(--brand, #1D4ED8); color: #fff; font-size: 12px; font-weight: 700; }
 .chattab { position: fixed; z-index: 58; right: max(14px, env(safe-area-inset-right, 0px)); bottom: calc(var(--chatnav, 0px) + 14px + env(safe-area-inset-bottom, 0px)); display: inline-flex; align-items: center; gap: 8px; padding: 13px 20px; border: 0; border-radius: 999px; background: var(--brand, #1D4ED8); color: #fff; font: inherit; font-size: 16px; font-weight: 700; line-height: 1.2; cursor: pointer; box-shadow: 0 6px 22px rgba(0,0,0,.28); }
 .chattab:hover { filter: brightness(1.08); }
+/* 💡 Tell us in the top bar (23 Oct 2026): a pill with its name, before 🤖 Ask AI; the pop-up opens under it */
+.chattab.chattop { position: relative; right: auto; bottom: auto; margin-left: auto; flex: none; padding: 7px 13px; font-size: 14.5px; box-shadow: none; gap: 5px; }
+.chattab.chattop + .ask-fab.ask-top { margin-left: 6px; }
+@media (min-width: 601px) and (min-height: 501px), (min-width: 951px) { html.chat-top .chatside { top: calc(env(safe-area-inset-top, 0px) + 64px); bottom: auto; max-height: calc(100vh - 80px); } }   /* phones keep the full-screen chat */
+/* phones: the site name, 💡 Tell us and 🤖 Ask AI stay on one line (the name gets smaller, and "…" only if it still doesn't fit) */
+@media (max-width: 420px) {
+  html.chat-top header .bar { flex-wrap: nowrap; gap: 8px; }
+  html.chat-top header .bar .logo { font-size: 16px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chattab.chattop, .chattab.chattop + .ask-fab.ask-top { padding: 6px 8px; font-size: 13px; }
+  .chattab.chattop + .ask-fab.ask-top { margin-left: 4px; }
+}
 .guestbadge { position: fixed; z-index: 58; right: max(14px, env(safe-area-inset-right, 0px)); bottom: calc(var(--chatnav, 0px) + 14px + env(safe-area-inset-bottom, 0px)); padding: 9px 14px; border-radius: 999px; background: #1F2937; color: #fff; font-size: 14px; font-weight: 600; box-shadow: 0 4px 14px rgba(0,0,0,.25); pointer-events: none; }
 .chattab .chatcount { position: absolute; top: -8px; right: -6px; min-width: 24px; height: 24px; padding: 0 6px; box-sizing: border-box; border-radius: 12px; background: #DC2626; color: #fff; border: 2px solid #fff; font-size: 13px; font-weight: 800; line-height: 20px; text-align: center; }
 .chattab:focus-visible { outline: 3px solid #93C5FD; outline-offset: 3px; }
@@ -542,8 +557,8 @@ ${fixesHTML()}
 @media (max-width: 600px), (max-width: 950px) and (max-height: 500px) {
   /* a small round 🚩 in the corner, so it never covers an answer (a student, 21 Oct: "i cant pick my option for the question": the
      wide button sat on the last option); it grows again to say "New reply!" when there is one */
-  .chattab:not(.chatnew) { width: 50px; height: 50px; padding: 0; justify-content: center; font-size: 22px; right: max(10px, env(safe-area-inset-right, 0px)); bottom: calc(var(--chatnav, 0px) + 10px + env(safe-area-inset-bottom, 0px)); }
-  .chattab:not(.chatnew) .chattab-t { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .chattab:not(.chatnew):not(.chattop) { width: 50px; height: 50px; padding: 0; justify-content: center; font-size: 22px; right: max(10px, env(safe-area-inset-right, 0px)); bottom: calc(var(--chatnav, 0px) + 10px + env(safe-area-inset-bottom, 0px)); }
+  .chattab:not(.chatnew):not(.chattop) .chattab-t { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .chatside { z-index: 1000; inset: 0; width: auto; max-height: none; border: 0; border-radius: 0; box-shadow: none; padding: calc(14px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
   .chatside .chathead { position: sticky; top: calc(-14px - env(safe-area-inset-top, 0px)); background: var(--card, #fff); padding: 6px 0; z-index: 1; font-size: 17px; }
   .chatside .chatlog { max-height: none; }
@@ -553,7 +568,7 @@ ${fixesHTML()}
 .chatside .chatx { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line, #CBD5E1); background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .chatside textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 16px; padding: 8px; border-radius: 8px; border: 1px solid var(--line, #CBD5E1); background: transparent; color: inherit; }
 .chatside .chatkind { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line, #CBD5E1); background: transparent; color: inherit; font: inherit; font-size: 14px; cursor: pointer; }
-/* 💬 Your say: five big cards, each with its own colour; nothing is coloured in until the student taps one */
+/* 💡 Tell us: five big cards, each with its own colour; nothing is coloured in until the student taps one */
 .chatside .saywhat { margin: 10px 0 6px; font-weight: 700; }
 .chatside .saycards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .chatside .saycard { --sayc: var(--brand, #1D4ED8); display: grid; grid-template-columns: auto 1fr; column-gap: 8px; align-items: center; text-align: left; padding: 10px 12px; border-radius: 14px; border: 1.5px solid var(--line, #CBD5E1); background: color-mix(in srgb, var(--sayc) 6%, var(--card, #fff)); color: inherit; font: inherit; cursor: pointer; transition: transform .12s; }

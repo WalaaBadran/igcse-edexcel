@@ -139,8 +139,8 @@ ${window.ASK_AI ? `<div class="card" style="margin-top:12px"><h3>🤖 Stuck? Ask
     ${window.ASK_AI ? '<li>The <b>🤖 Ask AI</b> helper uses a free AI model (Google’s open Gemma model, run by Cloudflare). Each question is checked for safety first, it only helps with school work, and this site does <b>not save</b> questions or answers. A daily limit keeps it free.</li>' : ''}
     ${o.claude ? '<li>Some writing tasks have an optional button that copies the answer so it can be pasted into Claude (claude.ai) for feedback. Nothing is sent unless someone chooses to do this. Claude accounts are for adults (18+), so a parent should do this step.</li>' : ''}
   </ul></div>
-<div class="card" style="margin-top:12px"><h3>🐞 Found a mistake? Have an idea?</h3>
-  <p style="margin:0">Tap the <b>🚩 Report a mistake</b> button in the bottom corner of any page. Choose 🚩 a mistake, 💡 an idea or 👎 something you don’t like, type your message and tap <b>📨 Send</b>. It goes straight to the parent who made this site, with the page you were on. When they reply, the button blinks red and blue: open it to read the reply. Your messages stay there on this device. You can also tap 👍 or 👎 at the bottom of a page to say if it helped you.</p></div>
+<div class="card" style="margin-top:12px"><h3>💬 Your say</h3>
+  <p style="margin:0">Tap the <b>💬 Your say</b> button in the bottom corner of any page: 🚩 tell us about a mistake, ➕ ask for something to be added, ❤️ say what you think of the site, 📅 tell us how often you use it, or 🛠️ say what would make it better. It goes straight to the parent who made this site, with the page you were on. When they reply, the button blinks red and blue: open it to read the reply. Your messages stay there on this device. You can also tap 👍 or 👎 at the bottom of a page to say if it helped you.</p></div>
 ${fixesHTML()}
 <div class="card" id="declaration" style="margin-top:12px"><h3>📜 Declaration</h3>
   <ul style="margin:6px 0 0;padding-left:20px;line-height:1.6" class="small">
@@ -171,7 +171,19 @@ ${fixesHTML()}
      they don't like about each site"). 🚩 Flag a mistake and 💬 Ideas & feedback open the same panel. Messages go to the site's
      own /api/chat and appear on the owner's private page, where the parent can reply. This device keeps a random conversation
      number (no name), so the reply shows here, in the panel, and a notice says when there is a new one. */
-  const KINDS = { idea: '💡 An idea to improve', dislike: '👎 Something I don’t like', mistake: '🚩 A mistake' };
+  /* 💬 Your say (user 2026-10-23: "something creative for flag a mistake: suggest something to be added, their opinion on the
+     site (like it or not, really useful or not), how often they use it, suggestions to improve"). Five big choices; the opinion
+     and how-often ones are one tap (typing is optional). [kind, icon, title, hint, text box label, example] */
+  const SAY = [
+    ['mistake', '🚩', 'Found a mistake', 'Something is wrong', 'Where is it, and what is wrong?', 'For example: “Question 3: the answer should be 1497”'],
+    ['add', '➕', 'Add something', 'A topic, questions or anything you need', 'What should be added?', 'For example: “more 6-mark questions on rivers”'],
+    ['opinion', '❤️', 'My opinion', 'Do you like it? Is it useful?', 'Why? (you can skip this)', 'Type here…'],
+    ['often', '📅', 'How often I use it', 'Just one tap', 'Anything else? (you can skip this)', 'Type here…'],
+    ['improve', '🛠️', 'Make it better', 'What would help you more?', 'What would make it better?', 'For example: “bigger pictures on my phone”'],
+  ];
+  const LIKE = ['😍 Love it', '🙂 Like it', '😐 It’s OK', '🙁 Don’t like it'];
+  const USEFUL = ['💯 Very useful', '👍 Useful', '🤏 A little', '👎 Not useful'];
+  const OFTEN = ['🔥 Every day', '📆 A few times a week', '📝 Only before tests', '👋 This is my first time'];
   const chatId = make => {
     let t = get('chat-t');
     if (!t && make) { t = crypto.randomUUID ? crypto.randomUUID() : (Math.random().toString(36).slice(2) + Date.now().toString(36) + Math.random().toString(36).slice(2)); put('chat-t', t); }
@@ -201,8 +213,8 @@ ${fixesHTML()}
     }
     if (GUEST || document.querySelector('body > .chattab')) return;
     const t = document.createElement('button'); t.type = 'button'; t.className = 'chattab';
-    t.setAttribute('aria-label', 'Report a mistake, or send an idea, to the person who made this site');
-    t.innerHTML = '<span class="chattab-i" aria-hidden="true">🚩</span><span class="chattab-t">Report a mistake</span>';
+    t.setAttribute('aria-label', 'Your say: a mistake, an idea or what you think, to the person who made this site');
+    t.innerHTML = '<span class="chattab-i" aria-hidden="true">💬</span><span class="chattab-t">Your say</span>';
     t.onclick = () => (document.querySelector('body > .chatside') ? chatClose() : chat(''));
     document.body.appendChild(t);
     chatPlace(); addEventListener('resize', chatPlace);
@@ -217,40 +229,56 @@ ${fixesHTML()}
     document.documentElement.style.setProperty('--chatnav', h + 'px');
   }
   function chatClose() { const w = document.querySelector('body > .chatside'); if (w) { w.remove(); checkReplies(); } paintReplies(); }   // closing checks at once
-  function chat(mode) {   // mode: '' (the tab: the student chooses), 'mistake', or 'dislike' (after 👎)
+  function chat(mode) {   // mode: '' (the button: the student chooses) or a kind, e.g. 'improve' after 👎
     chatClose();
-    let kind = mode;   // nothing is chosen until the student taps, unless they came from 👎
-    const w = document.createElement('section'); w.className = 'chatside'; w.setAttribute('role', 'dialog'); w.setAttribute('aria-label', 'Message the person who made this site');
-    w.innerHTML = `<div class="chathead"><b>🚩 Report a mistake · 💬 Chat</b><button type="button" class="chatx" aria-label="Close">✕</button></div>
-      <p class="small muted" style="margin:2px 0 6px">To the parent who made this site. Your messages and the replies stay here.</p>
+    let kind = mode, pick = {};   // nothing is chosen until the student taps, unless they came from 👎
+    const w = document.createElement('section'); w.className = 'chatside'; w.setAttribute('role', 'dialog'); w.setAttribute('aria-label', 'Your say: message the person who made this site');
+    w.innerHTML = `<div class="chathead"><b>💬 Your say</b><button type="button" class="chatx" aria-label="Close">✕</button></div>
+      <p class="small muted" style="margin:2px 0 6px">Straight to the parent who made this site. No names. Your messages and the replies stay here.</p>
       <div class="chatlog" aria-live="polite"></div>
-      <div class="chatkinds" role="group" aria-label="What is it about?">${['mistake', 'idea', 'dislike'].map(k => `<button type="button" class="chatkind" data-k="${k}" aria-pressed="${kind === k}">${KINDS[k]}</button>`).join('')}</div>
-      <label class="small" style="display:block;margin:8px 0 4px" for="chattext">Type your message (for a mistake, say where: for example "Question 3: the answer should be 1497")</label>
-      <textarea id="chattext" class="flagtext" rows="3" maxlength="1000" placeholder="Type here…"></textarea>
-      <div class="flagbtns"><button type="button" class="flagsend">📨 Send</button></div>
+      <p class="saywhat">What would you like to tell us?</p>
+      <div class="saycards" role="group" aria-label="What would you like to tell us?">${SAY.map(([k, ic, t, hint]) => `<button type="button" class="saycard" data-k="${k}" aria-pressed="false"><span class="sayi" aria-hidden="true">${ic}</span><b>${t}</b><small>${hint}</small></button>`).join('')}</div>
+      <div class="sayform" hidden></div>
       <p class="small muted flagnote" style="margin:6px 0 0">It goes with the page you are on. You may get a reply here, on this device. Please don't write your name or other personal details.</p>`;
     document.body.appendChild(w); paintReplies();
-    const log = w.querySelector('.chatlog'), ta = w.querySelector('.flagtext'), note = w.querySelector('.flagnote'), send = w.querySelector('.flagsend');
+    const log = w.querySelector('.chatlog'), form = w.querySelector('.sayform'), note = w.querySelector('.flagnote');
+    const chips = (key, q, list) => `<p class="sayq">${q}</p><div class="sayrow" role="group" aria-label="${q}">${list.map(o => `<button type="button" class="saychip" data-g="${key}" aria-pressed="false">${o}</button>`).join('')}</div>`;
+    const show = k => {   // the second step: one-tap answers and / or a text box for the chosen kind
+      kind = k; pick = {};
+      w.querySelectorAll('.saycard').forEach(x => x.setAttribute('aria-pressed', x.dataset.k === k));
+      const s = SAY.find(x => x[0] === k) || SAY[4];
+      form.innerHTML = (k === 'opinion' ? chips('like', 'Do you like this site?', LIKE) + chips('useful', 'Is it useful for your tests?', USEFUL) : '')
+        + (k === 'often' ? chips('often', 'How often do you use this site?', OFTEN) : '')
+        + `<label class="small" style="display:block;margin:10px 0 4px" for="chattext">${s[4]}</label>
+        <textarea id="chattext" class="flagtext" rows="3" maxlength="1000" placeholder="${s[5]}"></textarea>
+        <div class="flagbtns"><button type="button" class="flagsend">📨 Send</button></div>`;
+      form.hidden = false;
+      form.querySelectorAll('.saychip').forEach(c => c.onclick = () => { pick[c.dataset.g] = c.textContent; form.querySelectorAll(`.saychip[data-g="${c.dataset.g}"]`).forEach(x => x.setAttribute('aria-pressed', x === c)); });
+      form.querySelector('.flagsend').onclick = send;
+      (k === 'opinion' || k === 'often' ? form.querySelector('.saychip') : form.querySelector('textarea')).focus();
+    };
     w.querySelector('.chatx').onclick = chatClose;
     w.addEventListener('keydown', e => { if (e.key === 'Escape') chatClose(); });
-    w.querySelectorAll('.chatkind').forEach(c => c.onclick = () => { kind = c.dataset.k; w.querySelectorAll('.chatkind').forEach(x => x.setAttribute('aria-pressed', x === c)); ta.focus(); });
+    w.querySelectorAll('.saycard').forEach(c => c.onclick = () => show(c.dataset.k));
     const t0 = chatId(false);
     if (t0) fetch('/api/chat?t=' + encodeURIComponent(t0)).then(r => r.json()).then(j => { chatLog(log, j.msgs); lastSeenTop = Math.max(0, ...(j.msgs || []).map(m => m.id)); }).catch(() => {});
-    send.onclick = () => {
-      const text = ta.value.trim();
-      if (text.length < 2) { note.textContent = 'Please type your message first.'; ta.focus(); return; }
-      send.disabled = true; send.textContent = 'Sending…';
+    function send() {
+      const ta = form.querySelector('textarea'), btn = form.querySelector('.flagsend'), typed = ta.value.trim();
+      // one-tap answers go first, so the parent's page can count them: "Likes it: 😍 Love it", "Useful: 💯 Very useful", "Uses it: 🔥 Every day"
+      const text = [pick.like && 'Likes it: ' + pick.like, pick.useful && 'Useful: ' + pick.useful, pick.often && 'Uses it: ' + pick.often, typed && ((pick.like || pick.useful || pick.often) ? 'Why: ' : '') + typed].filter(Boolean).join('\n');
+      if (text.length < 2) { note.textContent = kind === 'opinion' || kind === 'often' ? 'Please tap an answer (or type a message) first.' : 'Please type your message first.'; ta.focus(); return; }
+      btn.disabled = true; btn.textContent = 'Sending…';
       fetch('/api/chat', { method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ t: chatId(true), kind: kind || 'other', text, page: flagPage(), url: location.pathname + location.hash }) })
         .then(r => r.json().catch(() => ({})).then(j => ({ ok: r.ok, j })))
         .then(({ ok, j }) => {
-          send.disabled = false; send.textContent = '📨 Send';
-          if (ok) { hotUntil = Date.now() + 10 * 60e3; ta.value = ''; chatLog(log, j.msgs); lastSeenTop = Math.max(0, ...(j.msgs || []).map(m => m.id)); note.innerHTML = '<b>✅ Sent. Thank you!</b> If the parent who made this site replies, the 🚩 Report a mistake button blinks red and blue: open it to read the reply.'; if (window.SITE_USE) SITE_USE('tool-msg'); return; }
+          btn.disabled = false; btn.textContent = '📨 Send';
+          if (ok) { hotUntil = Date.now() + 10 * 60e3; form.hidden = true; form.innerHTML = ''; kind = ''; w.querySelectorAll('.saycard').forEach(x => x.setAttribute('aria-pressed', 'false')); chatLog(log, j.msgs); lastSeenTop = Math.max(0, ...(j.msgs || []).map(m => m.id)); note.innerHTML = '<b>✅ Sent. Thank you!</b> If the parent who made this site replies, the 💬 Your say button blinks red and blue: open it to read the reply.'; if (window.SITE_USE) SITE_USE('tool-msg'); return; }
           note.textContent = j.error || 'It did not send. Please try again in a minute.';
         })
-        .catch(() => { note.textContent = 'It did not send (no internet?). Your text is still here: try again when you are online.'; send.disabled = false; send.textContent = '📨 Send'; });
-    };
-    ta.focus();
+        .catch(() => { note.textContent = 'It did not send (no internet?). Your text is still here: try again when you are online.'; btn.disabled = false; btn.textContent = '📨 Send'; });
+    }
+    if (mode) show(mode); else w.querySelector('.saycard').focus();
   }
   // replies appear without refreshing (user 2026-10-21: "make the reply appear instantly if i solved instantly"): checked when a
   // page opens, every 10 s while the chat is open (the reply is added to the conversation), every 30 s while the page is on
@@ -279,13 +307,13 @@ ${fixesHTML()}
     const t = document.querySelector('body > .chattab'); if (!t) return;
     const open = !!document.querySelector('body > .chatside');
     t.classList.toggle('chatnew', newReplies > 0 && !open);
-    t.querySelector('.chattab-i').textContent = open ? '✕' : newReplies ? '💬' : '🚩';
-    t.querySelector('.chattab-t').textContent = open ? 'Close' : newReplies ? (newReplies === 1 ? 'New reply! Tap to read' : newReplies + ' new replies! Tap to read') : 'Report a mistake';
+    t.querySelector('.chattab-i').textContent = open ? '✕' : newReplies ? '📩' : '💬';
+    t.querySelector('.chattab-t').textContent = open ? 'Close' : newReplies ? (newReplies === 1 ? 'New reply! Tap to read' : newReplies + ' new replies! Tap to read') : 'Your say';
     // a red number on the corner, like a phone's new-message badge (user 2026-10-21: "the color indicated a new message received")
     let n = t.querySelector('.chatcount');
     if (newReplies && !open) { if (!n) { n = document.createElement('span'); n.className = 'chatcount'; n.setAttribute('aria-hidden', 'true'); t.appendChild(n); } n.textContent = newReplies > 9 ? '9+' : String(newReplies); }
     else if (n) n.remove();
-    t.setAttribute('aria-label', newReplies ? 'You have a new reply: open the chat' : 'Report a mistake, or send an idea, to the person who made this site');
+    t.setAttribute('aria-label', newReplies ? 'You have a new reply: open the chat' : 'Your say: a mistake, an idea or what you think, to the person who made this site');
   }
   /* storage that never breaks the page (private mode can block it) */
   const get = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
@@ -439,7 +467,7 @@ ${fixesHTML()}
         const rb = d.querySelector('.ratebar'), rate = up => {
           sset('rated:' + partNow(), up ? 'up' : 'dn'); if (window.SITE_USE) SITE_USE((up ? 'up-' : 'dn-') + partNow());
           rb.innerHTML = up ? 'Thank you! 👍' : 'Thank you for telling us. <button type="button" class="ratewhy">Tell us what to improve</button>';
-          const w = rb.querySelector('.ratewhy'); if (w) w.onclick = () => chat('dislike');
+          const w = rb.querySelector('.ratewhy'); if (w) w.onclick = () => chat('improve');
         };
         if (rb.querySelector('.rateup')) { rb.querySelector('.rateup').onclick = () => rate(true); rb.querySelector('.ratedn').onclick = () => rate(false); }
       }
@@ -524,6 +552,23 @@ ${fixesHTML()}
 .chatside .chatx { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line, #CBD5E1); background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .chatside textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 16px; padding: 8px; border-radius: 8px; border: 1px solid var(--line, #CBD5E1); background: transparent; color: inherit; }
 .chatside .chatkind { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line, #CBD5E1); background: transparent; color: inherit; font: inherit; font-size: 14px; cursor: pointer; }
+/* 💬 Your say: five big cards, each with its own colour; nothing is coloured in until the student taps one */
+.chatside .saywhat { margin: 10px 0 6px; font-weight: 700; }
+.chatside .saycards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.chatside .saycard { --sayc: var(--brand, #1D4ED8); display: grid; grid-template-columns: auto 1fr; column-gap: 8px; align-items: center; text-align: left; padding: 10px 12px; border-radius: 14px; border: 1.5px solid var(--line, #CBD5E1); background: color-mix(in srgb, var(--sayc) 6%, var(--card, #fff)); color: inherit; font: inherit; cursor: pointer; transition: transform .12s; }
+.chatside .saycard:hover { transform: translateY(-1px); border-color: var(--sayc); }
+.chatside .saycard .sayi { grid-row: span 2; font-size: 24px; line-height: 1; }
+.chatside .saycard b { font-size: 15px; line-height: 1.25; }
+.chatside .saycard small { font-size: 12.5px; line-height: 1.3; color: var(--muted, #5B6475); }
+.chatside .saycard:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.chatside .saycard[data-k="mistake"] { --sayc: #DC2626; } .chatside .saycard[data-k="add"] { --sayc: #16A34A; } .chatside .saycard[data-k="opinion"] { --sayc: #DB2777; }
+.chatside .saycard[data-k="often"] { --sayc: #2563EB; } .chatside .saycard[data-k="improve"] { --sayc: #D97706; }
+.chatside .saycard[aria-pressed="true"] { border-color: var(--sayc); background: color-mix(in srgb, var(--sayc) 16%, var(--card, #fff)); box-shadow: 0 0 0 2px color-mix(in srgb, var(--sayc) 35%, transparent); }
+.chatside .sayq { margin: 10px 0 4px; font-weight: 600; font-size: 14px; }
+.chatside .sayrow { display: flex; flex-wrap: wrap; gap: 6px; }
+.chatside .saychip { padding: 7px 12px; border-radius: 999px; border: 1px solid var(--line, #CBD5E1); background: transparent; color: inherit; font: inherit; font-size: 14px; cursor: pointer; }
+.chatside .saychip[aria-pressed="true"] { border-color: var(--brand, #1D4ED8); background: color-mix(in srgb, var(--brand, #1D4ED8) 14%, transparent); font-weight: 700; }
+@media (max-width: 340px) { .chatside .saycards { grid-template-columns: 1fr; } }
 .chatside .chatkind[aria-pressed="true"] { border-color: var(--brand, #1D4ED8); background: color-mix(in srgb, var(--brand, #1D4ED8) 14%, transparent); font-weight: 700; }
 .flagbar .dedication { flex-basis: 100%; text-align: center; font-size: 12.5px; line-height: 1.8; margin: 10px 8px 4px; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--brand, #0E8F6E) 8%, transparent); font-family: 'Segoe UI', Tahoma, 'Noto Naskh Arabic', sans-serif; }
 .flagbar .dedication.en { font-size: 11.5px; line-height: 1.6; margin-top: 4px; }

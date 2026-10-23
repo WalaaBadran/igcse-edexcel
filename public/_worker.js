@@ -130,7 +130,8 @@ async function syncApi(request, env, url) {
 // inserted by hub-work/add_chat.py; it replaced the older flags-only block and kept its key for audit-team/check_flags.py.)
 const FLAG_KEY_HASH = 'a0eb9a84d213e5cf0ebe1aa4249164074d84be882ecc1c3e7d6a14737285bc85';
 const flagClean = (x, n) => String(x == null ? '' : x).replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, ' ').slice(0, n);
-const CHAT_KINDS = ['mistake', 'idea', 'dislike', 'other'];
+// 💬 Your say (23 Oct 2026): mistake, add, opinion, often, improve; idea and dislike are kept for pages still cached on phones
+const CHAT_KINDS = ['mistake', 'add', 'opinion', 'often', 'improve', 'idea', 'dislike', 'other'];
 let chatReady = false;
 async function chatSetup(db) {
   if (chatReady) return;
@@ -523,7 +524,7 @@ async function visitsHook(request, env, ctx) {
       cp3 = await env.DB.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(pass), 0) AS p FROM vdev WHERE site != 'igcse-edexcel' AND day >= ?1").bind(vDay(2)).first() || cp3;   // today and the 2 days before (vdev keeps 4)
     } catch (e) {}
     const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-    const KIND = { mistake: '🚩 Mistake', idea: '💡 Idea to improve', dislike: '👎 Doesn’t like', other: '💬 Message' };
+    const KIND = { mistake: '🚩 Mistake', add: '➕ Add something', opinion: '❤️ Opinion', often: '📅 How often', improve: '🛠️ Make it better', idea: '💡 Idea to improve', dislike: '👎 Doesn’t like', other: '💬 Message' };
     const when = ms => { const d = new Date(ms + 4 * 3600e3); return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }) + ' ' + d.toISOString().slice(11, 16); };
     const threads = {}; for (const c of chats.slice().reverse()) (threads[c.thread] = threads[c.thread] || []).push(c);
     const tlist = Object.values(threads).sort((a, b) => b[b.length - 1].id - a[a.length - 1].id);
@@ -542,7 +543,18 @@ ${isOpen ? (canReply ? `<form method="post" action="/__visits/reply" class="rf">
         : `<form method="post" action="/__visits/done" class="df">${hid('k', k)}${hid('t', m[0].thread)}${hid('undo', '1')}<button type="submit" class="ghost">↩ Open again</button></form>`}</div>`;
     };
     const stud = chats.filter(x => x.sender === 'student' && !/^TEST from the site builder/i.test(x.msg || ''));   // not the builder's tests
-    const fb = Object.keys(VSITES).map(s => { const c = kk => stud.filter(x => x.site === s && x.kind === kk); return [s, c('idea'), c('dislike'), c('mistake'), c('other')]; }).filter(r => r.slice(1).some(l => l.length));
+    // by site: [site, mistakes, add (+ old ideas), make it better (+ old dislikes), opinions + how often, other]
+    const fb = Object.keys(VSITES).map(s => { const c = (...kk) => stud.filter(x => x.site === s && kk.includes(x.kind)); return [s, c('mistake'), c('add', 'idea'), c('improve', 'dislike'), c('opinion', 'often'), c('other')]; }).filter(r => r.slice(1).some(l => l.length));
+    // ❤️ opinions and 📅 how often (💬 Your say, 23 Oct 2026): the one-tap answers, counted once per conversation (its newest answer)
+    const OPN = { like: ['😍 Love it', '🙂 Like it', '😐 It’s OK', '🙁 Don’t like it'], useful: ['💯 Very useful', '👍 Useful', '🤏 A little', '👎 Not useful'], often: ['🔥 Every day', '📆 A few times a week', '📝 Only before tests', '👋 This is my first time'] };
+    const opnRows = Object.keys(VSITES).map(s => {
+      const last = {}; stud.filter(x => x.site === s && (x.kind === 'opinion' || x.kind === 'often')).forEach(x => {
+        for (const [g, labels] of Object.entries(OPN)) { const hit = labels.find(l => (x.msg || '').includes(l)); if (hit && !last[x.thread + g]) last[x.thread + g] = [g, hit]; }   // newest first, so the first one seen is kept
+      });
+      const n = {}; Object.values(last).forEach(([g, l]) => { n[g] = n[g] || {}; n[g][l] = (n[g][l] || 0) + 1; });
+      return [s, n];
+    }).filter(([, n]) => Object.keys(n).length);
+    const opnCell = (n, g) => n[g] ? OPN[g].filter(l => n[g][l]).map(l => `${esc(l)} <b>${n[g][l]}</b>`).join(' · ') : '<small>–</small>';
     const UN = { home: 'Home page', exam: 'Exam questions', topics: 'Topics', topic: 'A topic (notes, quiz, cards)', quiz: 'Quiz', test: 'Test', paper: 'Practice paper', print: 'Print papers',
       library: 'Downloads', revise: '⚡ Revise', help: '❓ Help', plan: '📅 Study plan', progress: 'My progress', textbook: '📘 Textbook practice', gt: '🎟️ Golden tickets',
       a: 'An assessment page', more: 'More', start: 'Start here', summary: 'Summary', equations: 'Equations', quick: 'Quick check', lab: 'Practicals', cheat: 'Cheat sheet', year: 'The whole year',
@@ -600,7 +612,7 @@ select{font:inherit;padding:7px;border-radius:8px}.newlink{background:var(--card
 td.l{text-align:left;white-space:normal}</style></head><body>
 <h1>📈 Visits${waiting ? ` <small style="color:var(--brand)">· 💬 ${waiting} new</small>` : ''}</h1>
 <p style="margin:0 0 8px" class="small">🔄 Updated at <b>${new Date(Date.now() + 4 * 3600e3).toISOString().slice(11, 19)}</b> (UAE time). This page refreshes by itself every 30 seconds while it is on screen, and as soon as you come back to it. <a href="#" id="rnow">↻ Refresh now</a></p>
-<div class="nav"><a href="#msgs">💬 Messages${waiting ? ` (${waiting} new)` : ''}</a><a href="#fb">💡 Ideas &amp; dislikes</a><a href="#use">📊 What they use</a><a href="#show">👀 Show links</a><a href="#visits">📈 Visits</a><a href="/__visits/papers?k=${encodeURIComponent(k)}">📚 Maths papers</a><a href="https://year9.deirarevise.workers.dev/" target="_blank" rel="noopener">🏠 Year 9 hub</a><a href="https://year8.deirarevise.workers.dev/" target="_blank" rel="noopener">🏠 Year 8 hub</a></div><p>Each box: how many <b>devices</b> opened that site that day (UAE time). A device counts once a day per site, however many times it opens it. <small>"· 3 used"</small> = how many of them really used it (2 minutes or more of tapping, typing, scrolling, watching a video or listening). Day total = all the sites' boxes for that day added up; a student who used 3 sites counts 3 there. Total row = each site's days added up. Counting started on 19 Oct 2026. Only you have this link: please keep it private.</p>
+<div class="nav"><a href="#msgs">💬 Messages${waiting ? ` (${waiting} new)` : ''}</a><a href="#fb">❤️ Opinions &amp; ideas</a><a href="#use">📊 What they use</a><a href="#show">👀 Show links</a><a href="#visits">📈 Visits</a><a href="/__visits/papers?k=${encodeURIComponent(k)}">📚 Maths papers</a><a href="https://year9.deirarevise.workers.dev/" target="_blank" rel="noopener">🏠 Year 9 hub</a><a href="https://year8.deirarevise.workers.dev/" target="_blank" rel="noopener">🏠 Year 8 hub</a></div><p>Each box: how many <b>devices</b> opened that site that day (UAE time). A device counts once a day per site, however many times it opens it. <small>"· 3 used"</small> = how many of them really used it (2 minutes or more of tapping, typing, scrolling, watching a video or listening). Day total = all the sites' boxes for that day added up; a student who used 3 sites counts 3 there. Total row = each site's days added up. Counting started on 19 Oct 2026. Only you have this link: please keep it private.</p>
 <p id="me" style="color:var(--brand);font-weight:600"></p>
 <script>(function () { var own = false; try { own = localStorage.getItem('vown') === '1'; } catch (e) {}
   var me = document.getElementById('me'), go = ${JSON.stringify(meUrl)}, done = /[?&]done=1/.test(location.search);
@@ -608,13 +620,14 @@ td.l{text-align:left;white-space:normal}</style></head><body>
   else if (go && !done) location.replace(go);
   else me.textContent = 'This device could not be set up, so your visits on it may still be counted.';
 })();</script>
-<h2 id="msgs">💬 Messages from students</h2><p>Mistakes, ideas and things they don’t like, sent with the buttons at the bottom of every page. No names. Your reply appears on the phone or computer that sent the message, the next time the student opens that site. New messages appear here within 30 seconds.</p>
+<h2 id="msgs">💬 Messages from students</h2><p>Sent with the 💬 Your say button on every page: 🚩 mistakes, ➕ things to add, ❤️ what they think, 📅 how often they use it and 🛠️ ideas to make it better. No names. Your reply appears on the phone or computer that sent the message, the next time the student opens that site. New messages appear here within 30 seconds.</p>
 ${openT.length ? openT.map(m => thread(m, true)).join('') : '<p><b>No open messages.</b></p>'}
 ${doneT.length ? `<details><summary>Finished conversations (${doneT.length})</summary>${doneT.map(m => thread(m, false)).join('')}</details>` : ''}
-<h2 id="fb">💡 What students suggest and don’t like, by site</h2><p>Every message by site, newest first. <b style="color:#b42318">Open</b> = still to do (it is also at the top of Messages, where you reply or tap ✅ Solved); <b>finished</b> = done. Test messages from building the site are not counted.</p>
+<h2 id="fb">❤️ What students think and suggest, by site</h2><p>Every message by site, newest first. <b style="color:#b42318">Open</b> = still to do (it is also at the top of Messages, where you reply or tap ✅ Solved); <b>finished</b> = done. Test messages from building the site are not counted.</p>
 ${rateRows.length ? `<p><b>👍 / 👎 Was this page helpful?</b> One-tap answers at the bottom of each page (last 7 days), by part of the site:</p><div class="wrap" style="margin-bottom:12px"><table style="min-width:0"><tr><th>Site</th><th style="text-align:left">Part: 👍 helpful · 👎 not helpful</th></tr>${rateRows.map(([s, l]) => `<tr><td>${esc(VSITES[s])}</td><td class="l">${l.map(([p, [u, d]]) => `${esc(uname(p))}: 👍 <b>${u}</b> · 👎 <b${d > u ? ' style="color:#b42318"' : ''}>${d}</b>`).join(' &nbsp;|&nbsp; ')}</td></tr>`).join('')}</table></div>` : ''}
-${fb.length ? `<div class="wrap"><table style="min-width:0"><tr><th>Site</th><th>💡 Ideas</th><th>👎 Don’t like</th><th>🚩 Mistakes</th><th>💬 Other</th><th>Still open</th></tr>${fb.map(([s, i, d, mk, o]) => { const op = [...i, ...d, ...mk, ...o].filter(x => !x.done).length; return `<tr><td>${esc(VSITES[s])}</td><td>${i.length}</td><td>${d.length}</td><td>${mk.length}</td><td>${o.length}</td><td>${op ? `<b style="color:#b42318">${op}</b>` : '0'}</td></tr>`; }).join('')}</table></div>
-${fb.map(([s, i, d, mk, o]) => `<details${[...i, ...d, ...mk, ...o].some(x => !x.done) ? ' open' : ''}><summary><b>${esc(VSITES[s])}</b></summary><ul>${[...i, ...d, ...mk, ...o].sort((a, b) => b.id - a.id).slice(0, 20).map(x => `<li>${x.done ? '<small>finished</small>' : '<b style="color:#b42318">open</b>'} · ${KIND[x.kind] || KIND.other}: “${esc(x.msg)}” <small>· page: ${esc(x.page || 'Home')} · ${when(x.created)}</small></li>`).join('')}</ul></details>`).join('')}` : '<p>None yet.</p>'}
+${opnRows.length ? `<p><b>❤️ What they think, and 📅 how often they use it</b> (one-tap answers from 💬 Your say; each student counted once, with their newest answer):</p><div class="wrap" style="margin-bottom:12px"><table style="min-width:0"><tr><th>Site</th><th style="text-align:left">Do they like it?</th><th style="text-align:left">Is it useful?</th><th style="text-align:left">How often?</th></tr>${opnRows.map(([s, n]) => `<tr><td>${esc(VSITES[s])}</td><td class="l">${opnCell(n, 'like')}</td><td class="l">${opnCell(n, 'useful')}</td><td class="l">${opnCell(n, 'often')}</td></tr>`).join('')}</table></div>` : ''}
+${fb.length ? `<div class="wrap"><table style="min-width:0"><tr><th>Site</th><th>🚩 Mistakes</th><th>➕ Add</th><th>🛠️ Better</th><th>❤️ Opinions</th><th>💬 Other</th><th>Still open</th></tr>${fb.map(([s, ...g]) => { const op = g.flat().filter(x => !x.done).length; return `<tr><td>${esc(VSITES[s])}</td>${g.map(l => `<td>${l.length}</td>`).join('')}<td>${op ? `<b style="color:#b42318">${op}</b>` : '0'}</td></tr>`; }).join('')}</table></div>
+${fb.map(([s, ...g]) => `<details${g.flat().some(x => !x.done) ? ' open' : ''}><summary><b>${esc(VSITES[s])}</b></summary><ul>${g.flat().sort((a, b) => b.id - a.id).slice(0, 20).map(x => `<li>${x.done ? '<small>finished</small>' : '<b style="color:#b42318">open</b>'} · ${KIND[x.kind] || KIND.other}: “${esc(x.msg)}” <small>· page: ${esc(x.page || 'Home')} · ${when(x.created)}</small></li>`).join('')}</ul></details>`).join('')}` : '<p>None yet.</p>'}
 <h2 id="use">📊 What students use (last 7 days)</h2><p>How many times each part was opened, all devices together. No device numbers and no names: just totals. Your own devices are not counted.</p>
 ${useRows.length ? `<div class="wrap"><table style="min-width:0"><tr><th>Site</th><th style="text-align:left">Parts opened (most used first)</th></tr>${useRows.map(([s, l]) => `<tr><td>${esc(VSITES[s])}</td><td class="l">${l.slice(0, 14).map(u => `${esc(uname(u.part))} <b>${u.n}</b>`).join(' · ')}</td></tr>`).join('')}</table></div>` : '<p>Nothing yet: counting started on 21 Oct 2026.</p>'}
 ${cpi ? `<h2 id="classpass">🔑 Class pass (no password)</h2><p>Every phone, tablet or computer that uses the sites gets a <b>class pass</b> on its own: nothing to type, no names, nothing for the students to do. When the lock is on, the sites open <b>only on devices with the pass</b>, so a site’s name written down and given to someone else does not open. Show links work as before.</p>

@@ -350,6 +350,7 @@ ${fixesHTML()}
      (one title or a list)]. STUDY CONTENT ONLY (user, 23 Oct 2026: "make what is new only for academic issues"): new questions,
      units, answers and corrections. Never list the site's tools or features here: that makes the sites easy to copy. */
   const NEWS = [
+    ['2026-10-23', '🗝️ NEW in ⚡ Revise: Key terms. See a key term, type what it means, check it, then see the real meaning.', ['Year 9 Geography', 'Year 8 Geography', 'Year 9 History', 'Year 8 History', 'Year 9 Science', 'Year 8 Science', 'Year 9 English', 'Year 8 English']],
     ['2026-10-23', '📝 NEW in Exam questions: Test practice. Your teacher’s own questions from the lesson PowerPoints, from 1-mark to 8-mark questions, with answers.', ['Year 8 Science', 'Year 9 Science', 'Year 8 Geography', 'Year 8 History', 'Year 9 History']],
     ['2026-10-22', '📝 NEW in Exam questions: Test practice. Your teacher’s own questions from the lesson PowerPoints, from 1-mark to 8-mark questions, with answers.', 'Year 9 Geography'],
     ['2026-10-21', '✅ Thank you to the student who flagged a mistake in ⏱️ Timed full answer (question 7)! It is fixed.', 'Year 9 English'],

@@ -352,12 +352,11 @@ ${fixesHTML()}
   /* 🆕 What's new: shown on the Home page for 2 weeks after each change, newest first; only the 2 newest are open, the rest
      fold under "More" so the box stays short on phones (2026-10-19). [date, text, only on sites whose title starts with this
      (one title or a list)]. STUDY CONTENT ONLY (user, 23 Oct 2026: "make what is new only for academic issues"): new questions,
-     units, answers and corrections. Never list the site's tools or features here: that makes the sites easy to copy. */
+     units and answers. Never list the site’s tools or features here (that makes the sites easy to copy), and never thank a student for flagging a mistake (user, 23 Oct 2026). */
   const NEWS = [
     ['2026-10-23', '🗝️ NEW in ⚡ Revise: Key terms. See a key term, type what it means, check it, then see the real meaning.', ['Year 9 Geography', 'Year 8 Geography', 'Year 9 History', 'Year 8 History', 'Year 9 Science', 'Year 8 Science', 'Year 9 English', 'Year 8 English']],
     ['2026-10-23', '📝 NEW in Exam questions: Test practice. Your teacher’s own questions from the lesson PowerPoints, from 1-mark to 8-mark questions, with answers.', ['Year 8 Science', 'Year 9 Science', 'Year 8 Geography', 'Year 8 History', 'Year 9 History']],
     ['2026-10-22', '📝 NEW in Exam questions: Test practice. Your teacher’s own questions from the lesson PowerPoints, from 1-mark to 8-mark questions, with answers.', 'Year 9 Geography'],
-    ['2026-10-21', '✅ Thank you to the student who flagged a mistake in ⏱️ Timed full answer (question 7)! It is fixed.', 'Year 9 English'],
     ['2026-10-20', '🌸 NEW: PETAL step by step. Practise each part of PETAL on its own, including 🔗 L+: linking to Orwell’s intentions and the context.', 'Year 9 English'],
     ['2026-10-20', '✍️ 1-mark quiz questions are now written answers, like in your test, with marking.', ['Year 8 History', 'Year 9 History']],
     ['2026-10-19', '📕 NEW: Textbook practice. The questions from your textbook, with the official answers.', ['Year 8 Science', 'Year 9 Science']],

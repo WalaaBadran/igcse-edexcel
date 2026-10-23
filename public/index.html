@@ -203,6 +203,9 @@ section[data-page] { display: none; } section[data-page].on { display: block; }
 .sol ol { margin: 6px 0 0 18px; padding: 0; } .sol li { margin: 3px 0; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .step .num { color: #0F141C; } }
 .gh { margin: 12px 0 6px; font-weight: 800; font-size: 14px; color: var(--muted); }
+details.tg > summary.gh { cursor: pointer; list-style: none; margin: 8px 0 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--ink); font-size: 15px; }
+details.tg > summary.gh::-webkit-details-marker { display: none; } details.tg > summary.gh::before { content: '▸ '; } details.tg[open] > summary.gh::before { content: '▾ '; }
+details.tg[open] > summary.gh { border-color: var(--brand); } details.tg > .checks { margin-top: 8px; }
 /* 📚 Learn a topic and Today's 5 (learn.js) */
 .lbar { display: block; height: 8px; border-radius: 99px; background: var(--line); overflow: hidden; margin: 6px 0 2px; }
 .lbar > span { display: block; height: 100%; background: var(--good); border-radius: 99px; }
@@ -285,7 +288,7 @@ canvas.pad { display: block; width: 100%; height: 300px; border: 1px solid var(-
 
 <section data-page="worksheet">
   <h1>✏️ Make my test paper</h1>
-  <p class="muted">Tick your topics and how hard you want it, then press the button. The site picks real exam questions and builds a test paper straight away. You can preview it, print it or download it as a PDF, and the mark scheme (with step-by-step solutions) comes separately. Tip: the <b>Assessment</b> buttons tick every topic for that assessment.</p>
+  <p class="muted">Tick your topics and how hard you want it, then press the button. The site picks real exam questions and builds a test paper straight away. You can preview it, print it or download it as a PDF, and the mark scheme (with step-by-step solutions) comes separately. Tip: the <b>… topics</b> buttons next to <b>Select all</b> tick every topic for that test. Tap a group's name (for example <b>Number</b>) to open it and tick topics yourself.</p>
   <div class="card step"><span class="num">1</span><div class="stepbody"><h3>Topics</h3>
     <div class="row" style="margin:0 0 10px"><button class="btn ghost small" type="button" data-all="on">Select all</button><button class="btn ghost small" type="button" data-all="off">Clear</button><span id="assessbtns" style="display:contents"></span></div>
     <div id="topics"><p class="muted">Loading the topics…</p></div></div></div>
@@ -320,12 +323,12 @@ addEventListener('hashchange', showPage); showPage();
 <script src="topics.js?v=11"></script>
 <script src="pdf.js?v=2"></script>
 <script src="ma.js?v=20261023a"></script>
-<script src="app.js?v=111"></script>
+<script src="app.js?v=112"></script>
 <script src="videos.js?v=1"></script>
 <script src="learn.js?v=13"></script>
-<script src="maths-plan.js?v=20261022a"></script>
+<script src="maths-plan.js?v=20261023a"></script>
 <script data-share src="help.js?v=20261023j" data-plain></script>
-<script src="plan.js?v=20261022a" ></script>
+<script src="plan.js?v=20261023a" ></script>
 <script src="sync.js?v=20261019a"></script>
 <script src="site.js?v=6"></script>
 </body>

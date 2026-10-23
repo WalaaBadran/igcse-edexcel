@@ -42,6 +42,7 @@
     const n = wsPool().length, none = !checked('topic').length || !checked('level').length;
     $('avail').textContent = none ? 'tick at least one topic and one difficulty' : `${n} question${n === 1 ? '' : 's'} to choose from`;
     $('msg').textContent = '';
+    document.querySelectorAll('#topics details.tg').forEach(d => { const k = d.querySelectorAll('input:checked').length, c = d.querySelector('[data-tgc]'); if (c) c.textContent = k ? ` · ${k} ticked` : ''; });
   }
 
   function shuffle(a) {
@@ -87,7 +88,7 @@
       return `<div class="mk"><div class="row" style="margin:0"><b>Question ${i + 1}</b><span class="small muted">${esc(P.subs[r[0]][1])} · ${max} mark${max === 1 ? '' : 's'}</span><span class="spacer"></span>
         <label class="small">Marks I got <select data-mk="${i}"><option value="">–</option>${Array.from({ length: max + 1 }, (_, k) => `<option value="${k}"${v === k ? ' selected' : ''}>${k}</option>`).join('')}</select> / ${max}</label>
         <button class="btn small ghost" type="button" data-ws="mkms" data-i="${i}">${r[10] & 2 ? '✅ Mark scheme' : '📄 Question'}</button></div><div class="mkms" id="mkms${i}"></div></div>`; }).join('');
-    return `<h2 style="margin-top:0">📝 Mark my test</h2><p class="small muted">Do the test on paper first. Then, for each question, compare your answer with the mark scheme and choose the marks you got. Be honest: it's only for you. (${done} of ${WS.pick.length} marked)</p>
+    return `<h2 style="margin-top:0">📝 Mark my test</h2><p class="small muted">Do the test on paper first. Then, for each question, compare your answer with the mark scheme and choose the marks you got. Be honest: it's only for you. (<span id="mkcount">${done}</span> of ${WS.pick.length} marked)</p>
       ${rows}<div class="row"><button class="btn" type="button" data-ws="mkdone">✅ See my results</button></div><div id="mkres">${WS.showRes ? resultsHTML() : ''}</div>`;
   }
   function resultsHTML() {
@@ -126,7 +127,8 @@
     const P = window.Y8M_PP;
     return P.chapters.map(([tp, cname]) => {
       const gs = P.groups.map((g, i) => [g, i]).filter(([g]) => g[0] === tp);
-      return gs.length ? `<p class="gh">${esc(cname)}</p><div class="checks">${gs.map(([g, i]) => box(name, String(i), g[1])).join('')}</div>` : '';
+      // a folded group per chapter (23 Oct 2026: 63 topic boxes put the button 6 phone screens down)
+      return gs.length ? `<details class="tg"><summary class="gh">${esc(cname)} <span class="small muted" style="font-weight:600">(${gs.length} topic${gs.length === 1 ? '' : 's'}<span data-tgc></span>)</span></summary><div class="checks">${gs.map(([g, i]) => box(name, String(i), g[1])).join('')}</div></details>` : '';
     }).join('');
   }
 
@@ -261,7 +263,7 @@
   });
   document.addEventListener('change', e => {
     const mk = e.target.closest('[data-mk]');
-    if (mk && WS) { const i = +mk.dataset.mk; if (mk.value === '') delete WS.marks[i]; else WS.marks[i] = +mk.value; keepTest(); return; }
+    if (mk && WS) { const i = +mk.dataset.mk; if (mk.value === '') delete WS.marks[i]; else WS.marks[i] = +mk.value; keepTest(); const c = $('mkcount'); if (c) c.textContent = WS.pick.filter((r, k) => WS.marks[k] != null).length; return; }
     if (e.target.matches('input[type=checkbox]')) update();
   });
   $('tier').addEventListener('change', update);

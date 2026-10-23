@@ -351,7 +351,9 @@
   }
   // Wait a moment so a launch celebration (if any) appears first; the countdown then waits for the next visit.
   // Only when the site is opened at its home page: a direct link (e.g. ⚡ Revise from the year page) goes straight there.
-  const boot = () => { if (/^#?\/?$/.test(location.hash)) setTimeout(() => splash(splashDate()), 600); };
+  // ...and still on Home when it shows (23 Oct 2026: tapping a menu button at once let it cover the next page)
+  const home = () => /^#?\/?$/.test(location.hash);
+  const boot = () => { if (home()) setTimeout(() => { if (home()) splash(splashDate()); }, 600); };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else setTimeout(boot, 0);
 
   window.PLAN = { view, splash: d => splash(d, true) };

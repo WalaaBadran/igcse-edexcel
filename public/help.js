@@ -508,7 +508,11 @@ ${fixesHTML()}
         const rb = d.querySelector('.ratebar'), rate = up => {
           sset('rated:' + partNow(), up ? 'up' : 'dn'); if (window.SITE_USE) SITE_USE((up ? 'up-' : 'dn-') + partNow());
           rb.innerHTML = up ? 'Thank you! 👍' : 'Thank you for telling us. <button type="button" class="ratewhy">Tell us what to improve</button>';
-          const w = rb.querySelector('.ratewhy'); if (w) w.onclick = () => chat('improve');
+          // 👎: ask why straight away (user, 23 Oct 2026: a 👎 on Y9 Maths gave no reason, and 👍/👎 are anonymous, so the student
+          // could not be asked later): 📣 Tell us opens at 🛠️ Make it better with the question; the student can just close it
+          const why = () => { chat('improve'); const l = document.querySelector('.chatside .sayform label'); if (l) l.textContent = 'What didn’t you like about this page? What would make it better?'; };
+          const w = rb.querySelector('.ratewhy'); if (w) w.onclick = why;
+          if (!up) why();
         };
         if (rb.querySelector('.rateup')) { rb.querySelector('.rateup').onclick = () => rate(true); rb.querySelector('.ratedn').onclick = () => rate(false); }
       }

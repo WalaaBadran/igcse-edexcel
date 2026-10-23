@@ -218,7 +218,9 @@ const VSITES = { 'year9-english': 'Y9 English', 'year8-english': 'Y8 English', '
 let visitsReady = false;
 // ⚡ VSCHEMA: the tables below are made once; after that ONE quick check replaces ~16 table statements each time a server copy
 // starts (user 2026-10-21: show links were slow, about 10 s from the year page to a subject). Change it whenever a table changes.
-const VSCHEMA = 'v12';
+const VSCHEMA = 'v13';
+const VDLK = Object.assign(Object.create(null), { dl: '⬇️ Downloaded', open: '📄 Opened', print: '🖨️ Printed' });   // ⬇️ kinds of file use (help.js fileUse)
+const vDlName = f => String(f || '').replace(/[\u0000-\u001f<>"`\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
 async function visitsTable(db) {
   if (visitsReady) return;
   try { const r = await db.prepare("SELECT val FROM vkeys WHERE name = 'schema-visits'").first(); if (r && r.val === VSCHEMA) { visitsReady = true; return; } } catch (e) {}
@@ -240,6 +242,8 @@ async function visitsTable(db) {
   for (const [c, t] of [['part', 'TEXT'], ['secs', 'INTEGER']]) { try { await db.prepare(`ALTER TABLE vpassuse ADD COLUMN ${c} ${t}`).run(); } catch (e) {} }
   // v12 (23 Oct 2026): 👥 the class goal: how many answers the whole class gave on each site each week (totals only)
   await db.prepare('CREATE TABLE IF NOT EXISTS vgoal (site TEXT, week TEXT, n INTEGER, PRIMARY KEY (site, week))').run();
+  // v13 (user 2026-10-23: "if someone downloaded let me know"): ⬇️ files downloaded, opened or printed, totals per day (60 days)
+  await db.prepare('CREATE TABLE IF NOT EXISTS vdl (day TEXT, site TEXT, kind TEXT, item TEXT, part TEXT, n INTEGER, last INTEGER, PRIMARY KEY (day, site, kind, item))').run();
   await db.prepare('CREATE TABLE IF NOT EXISTS vkeys (name TEXT PRIMARY KEY, val TEXT)').run();
   await db.prepare("INSERT OR REPLACE INTO vkeys (name, val) VALUES ('schema-visits', ?1)").bind(VSCHEMA).run();
   visitsReady = true;
@@ -306,6 +310,16 @@ async function visitsHook(request, env, ctx) {
     const site = url.hostname.split('.')[0];
     if (!env.DB || !VSITES[site] || request.headers.get('sec-fetch-site') === 'cross-site') return new Response(null, { status: 204 });
     const dev = (url.searchParams.get('d') || '').slice(0, 64), day = vDay();
+    if (VDLK[url.searchParams.get('dl')]) {   // ⬇️ a file downloaded, opened or printed: a total per day, site and file, no device number
+      const dk = url.searchParams.get('dl'), f = vDlName(url.searchParams.get('f')), p = (url.searchParams.get('p') || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 30);
+      if (f) {
+        const job = (async () => { await visitsTable(env.DB);
+          await env.DB.prepare('INSERT INTO vdl (day, site, kind, item, part, n, last) VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6) ON CONFLICT (day, site, kind, item) DO UPDATE SET n = n + 1, last = ?6').bind(day, site, dk, f, p, Date.now()).run();
+          if (Math.random() < 0.05) await env.DB.prepare('DELETE FROM vdl WHERE day < ?1').bind(vDay(60)).run(); })().catch(() => {});
+        if (ctx && ctx.waitUntil) ctx.waitUntil(job); else await job;
+      }
+      return new Response(null, { status: 204, headers: { 'cache-control': 'no-store' } });
+    }
     if (url.searchParams.has('use')) {   // 📊 which parts were opened (user 2026-10-21: "without knowing the persons can i know how they are using it"):
       // only totals per day, site and part (e.g. "exam:3,topic:5,tool-ask:1"), never a device number
       const parts = String(url.searchParams.get('use') || '').split(',').slice(0, 25).map(x => x.split(':'))
@@ -396,7 +410,7 @@ async function visitsHook(request, env, ctx) {
     }
     if (op === 'pass') {   // 👀 a link for someone outside the class: opens twice, then stops (user 2026-10-21)
       const ps = String(f.get('site') || '');
-      if (VSITES[ps] || VHUBS[ps]) {
+      if (VHUBS[ps]) {   // only a year hub + all its subjects (user, 23 Oct 2026: "only year 9 hub ... and same year 8")
         const tok = (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g, '').slice(0, 32);
         await env.DB.prepare('INSERT INTO vpass (tok, site, uses, created) VALUES (?1, ?2, 2, ?3)').bind(await vsha('pass:' + tok), ps, Date.now()).run();
         // only the newest show links are kept (user 2026-10-21: "don't save, just the last ones created"): older ones and their
@@ -426,8 +440,8 @@ async function visitsHook(request, env, ctx) {
   // 👀 the show link itself. Opening it only shows a button (message apps open links to make previews, and that must not use
   // one of the two goes); the button uses one go and opens the site in guest mode: help.js then saves nothing on that device
   // and nothing is counted.
-  // 👀 during a show-link visit, help.js sends the pages opened and the minutes of use (only with the visit's own number;
-  // the link page tells the visitor that the sender can see this)
+  // 👀 during a show-link visit, help.js sends the pages opened and the minutes of use (only with the visit's own number),
+  // and each file downloaded, opened or printed (user 2026-10-23: "let me know how they use it and if they download from it")
   if (url.pathname === '/__guestuse' && request.method === 'POST') {
     const g = url.searchParams.get('g') || '';
     if (env.DB && /^[a-f0-9]{32}$/.test(g)) {
@@ -435,6 +449,8 @@ async function visitsHook(request, env, ctx) {
         await visitsTable(env.DB);
         const r = await env.DB.prepare('SELECT exp, pass FROM vguest WHERE tok = ?1').bind(await vsha('guest:' + g)).first();
         if (!(r && r.exp > Date.now() && r.pass)) return;
+        const dk = url.searchParams.get('dl') || '';
+        if (VDLK[dk]) { await env.DB.prepare('INSERT INTO vpassuse (pass, at, site, kind, part, secs) VALUES (?1, ?2, ?3, ?4, ?5, 0)').bind(r.pass, Date.now(), url.hostname.split('.')[0], dk, vDlName(url.searchParams.get('f'))).run(); return; }
         const p = (url.searchParams.get('p') || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 30), t = Math.min(Math.max(+url.searchParams.get('t') || 0, 0), 600);
         if (p || t) await env.DB.prepare("INSERT INTO vpassuse (pass, at, site, kind, part, secs) VALUES (?1, ?2, ?3, 'use', ?4, ?5)").bind(r.pass, Date.now(), url.hostname.split('.')[0], p, t).run();
       })().catch(() => {});
@@ -499,8 +515,9 @@ async function visitsHook(request, env, ctx) {
     const name = VSITES[site] || 'study site';
     const body = opened ? `<p>Opening ${name}…</p><script>try { sessionStorage.setItem('guest', '1'); sessionStorage.setItem('gtok', ${JSON.stringify(gs)}); } catch (e) {} location.replace(${JSON.stringify('/__g/' + gs + '/')});</script>`
       : other ? `<h1>🔒 This link is for one person only</h1><p>It was sent to someone to look at the site on their own device, and it has already been opened there. It does not open on other devices. Please ask the person who made the site.</p>`
-      : left > 0 ? `<h1>👀 ${name}</h1><p>You have been sent this link to look at a revision site made by a parent for their class. It is <b>for you only</b>: it opens on the first device you use and then works only there, so please don’t share it or the site’s address. (For this, one small cookie is kept on that device for 2 weeks.)</p><p>It opens in guest mode: nothing you do on the site is saved on your device. The person who sent it can see when it is opened, for how long, and which pages are looked at.</p>
-<p>This link works <b>${left === 1 ? 'one more time' : 'twice'}</b>.</p><form method="post"><button type="submit">Open the site</button></form>`
+      // only the site's name and the button, no message (user 2026-10-23: "remove the message in the beginning, i don't want to
+      // inform them"); the button stays so that message apps making a link preview don't use a go
+      : left > 0 ? `<h1>👀 ${name}</h1><form method="post"><button type="submit">Open the site</button></form>`
       : `<h1>This link has stopped working</h1><p>It could be opened twice, and it has been used. Please ask the person who sent it for a new one.</p>`;
     return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${name}</title>
 <style>body{margin:0;padding:24px 16px;font:17px/1.5 system-ui,sans-serif;background:#f4f6fb;color:#1d2433;max-width:560px;margin-inline:auto}
@@ -531,7 +548,7 @@ async function visitsHook(request, env, ctx) {
     if (env.DB) { await visitsTable(env.DB); rows = (await env.DB.prepare('SELECT day, site, opens, devices FROM visits ORDER BY day DESC').all()).results || [];
       devs = (await env.DB.prepare('SELECT day, site, at, kind, secs, pages FROM vdev WHERE day >= ?1 ORDER BY day DESC, at DESC').bind(vDay(1)).all()).results || []; }   // today and yesterday only (user 2026-10-21); older days are in the counts
     // 💬 messages, 📊 parts used (last 7 days), 👀 show links (v6, 2026-10-21)
-    let chats = [], uses = [], passes = [], puse = [], goals = [];
+    let chats = [], uses = [], passes = [], puse = [], goals = [], dls = [];
     if (env.DB) {
       await chatSetup(env.DB);
       chats = (await env.DB.prepare('SELECT id, thread, site, sender, kind, page, url, msg, created, done FROM chat ORDER BY id DESC LIMIT 2000').all()).results || [];
@@ -539,6 +556,7 @@ async function visitsHook(request, env, ctx) {
       passes = (await env.DB.prepare(`SELECT rowid AS id, tok, site, uses, created FROM vpass WHERE created > ?1 ORDER BY created DESC LIMIT ${VKEEP}`).bind(Date.now() - 14 * 864e5).all()).results || [];
       puse = (await env.DB.prepare('SELECT pass, at, site, kind, part, secs FROM vpassuse WHERE at > ?1 ORDER BY at').bind(Date.now() - 15 * 864e5).all()).results || [];
       try { await visitsTable(env.DB); goals = (await env.DB.prepare('SELECT site, week, n FROM vgoal WHERE week >= ?1').bind(vWeek(1)).all()).results || []; } catch (e) {}   // 👥 class goal
+      try { dls = (await env.DB.prepare('SELECT day, site, kind, item, part, n, last FROM vdl WHERE day >= ?1 ORDER BY last DESC LIMIT 300').bind(vDay(6)).all()).results || []; } catch (e) {}   // ⬇️ files
     }
     // 🔑 class pass: the lock, the class links, and how many recent devices already have the pass
     let cpi = null, cpT = { n: 0, p: 0 }, cp3 = { n: 0, p: 0 };
@@ -555,7 +573,7 @@ async function visitsHook(request, env, ctx) {
     const openT = tlist.filter(m => m.some(x => !x.done)), doneT = tlist.filter(m => m.every(x => x.done)).slice(0, 30);
     const waiting = openT.filter(m => m[m.length - 1].sender === 'student').length;
     const hid = (n, v) => `<input type="hidden" name="${n}" value="${esc(v)}">`;
-    const QUICK = ['✅ Thank you! It is fixed now.', '👍 Thank you, good idea! I will add it.', '🔍 Thank you, I am checking it.', '🙏 Thank you for telling me.'];
+    const QUICK = ['✅ Thank you! It is fixed now.', '🎉 Done! It is on the site now.', '👍 Thank you, good idea! I will add it.', '🔍 Thank you, I am checking it.', '🙏 Thank you for telling me.'];
     const thread = (m, isOpen) => {
       const s = m[0].site, first = m.find(x => x.sender === 'student') || m[0], kinds = [...new Set(m.filter(x => x.sender === 'student').map(x => x.kind))];
       const link = `https://${vHost(s)}${first.url && first.url.startsWith('/') ? first.url : '/'}`, canReply = !/^flag-/.test(m[0].thread);
@@ -600,13 +618,14 @@ ${isOpen ? (canReply ? `<form method="post" action="/__visits/reply" class="rf">
       if (!ev.length) return (notes ? notes + '<br>' : '') + '<small>not opened yet</small>';
       const out = [];
       for (const x of ev) {
-        if (x.kind === 'open' || !out.length) out.push({ at: x.at, secs: 0, sites: new Map() });
+        if (x.kind === 'open' || !out.length) out.push({ at: x.at, secs: 0, sites: new Map(), files: [] });
         const g = out[out.length - 1], nm = siteName(x.site);
+        if (VDLK[x.kind]) { g.files.push(`${VDLK[x.kind]}: ${esc(x.part || 'a file')} <small>(${esc(nm)}, ${when(x.at).slice(-5)})</small>`); continue; }
         if (!g.sites.has(nm)) g.sites.set(nm, new Set());
         if (x.kind === 'use') { g.secs += x.secs || 0; if (x.part) g.sites.get(nm).add(uname(x.part)); }
       }
       const mins = g => g.secs >= 60 ? `about ${Math.round(g.secs / 60)} min` : g.secs ? 'under 1 min' : '<small>time not recorded</small>';
-      return out.map((g, i) => `<b>Go ${i + 1}:</b> ${when(g.at)} · ${mins(g)}<br>${[...g.sites].map(([s, ps]) => `<b>${esc(s)}</b>${ps.size ? ': ' + [...ps].map(esc).join(', ') : ''}`).join(' · ')}`).join('<br>') + (notes ? '<br>' + notes : '');
+      return out.map((g, i) => `<b>Go ${i + 1}:</b> ${when(g.at)} · ${mins(g)}<br>${[...g.sites].map(([s, ps]) => `<b>${esc(s)}</b>${ps.size ? ': ' + [...ps].map(esc).join(', ') : ''}`).join(' · ')}${g.files.length ? '<br>' + g.files.join('<br>') : '<br><small>no downloads or prints</small>'}`).join('<br>') + (notes ? '<br>' + notes : '');
     };
     const used2 = d => devs.filter(x => x.day === d && (x.secs || 0) >= 120).length;
     const used = (d, s) => devs.filter(x => x.day === d && x.site === s && (x.secs || 0) >= 120).length;
@@ -618,6 +637,9 @@ ${isOpen ? (canReply ? `<form method="post" action="/__visits/reply" class="rf">
     const sum = list => list.reduce((a, r) => [a[0] + r.devices, a[1] + r.opens], [0, 0]);
     const nice = d => new Date(d + 'T00:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
     const pair = ([a]) => `<b>${a}</b>`;
+    // ⬇️ files downloaded, opened or printed (students; show-link visits are in 👀 Show links); today's count also in the menu
+    const dlToday = dls.filter(x => x.day === vDay()).reduce((a, x) => a + x.n, 0);
+    const dlHTML = dls.length ? `<div class="wrap"><table style="min-width:0"><tr><th>Last time</th><th>Site</th><th style="text-align:left">What</th><th>Times</th></tr>${dls.map(x => `<tr><td>${when(x.last)}</td><td>${esc(VSITES[x.site] || x.site)}</td><td class="l">${VDLK[x.kind] || ''}: <b>${esc(x.item)}</b>${x.part ? ` <small>· ${esc(uname(x.part))}</small>` : ''}</td><td><b>${x.n}</b>${x.day !== vDay() ? ` <small>on ${nice(x.day)}</small>` : ''}</td></tr>`).join('')}</table></div>` : '<p>Nothing yet: counting started on 23 Oct 2026.</p>';
     const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${waiting ? `(${waiting}) ` : ''}Visits</title>
 <style>:root{--bg:#f4f6fb;--card:#fff;--ink:#1d2433;--muted:#5b6475;--line:#e4e7ec;--brand:#0E8F6E}
 @media (prefers-color-scheme:dark){:root{--bg:#12151c;--card:#1c212b;--ink:#e8ecf3;--muted:#9aa3b2;--line:#2c3340;--brand:#34D3A3}}
@@ -636,7 +658,7 @@ select{font:inherit;padding:7px;border-radius:8px}.newlink{background:var(--card
 td.l{text-align:left;white-space:normal}</style></head><body>
 <h1>📈 Visits${waiting ? ` <small style="color:var(--brand)">· 💬 ${waiting} new</small>` : ''}</h1>
 <p style="margin:0 0 8px" class="small">🔄 Updated at <b>${new Date(Date.now() + 4 * 3600e3).toISOString().slice(11, 19)}</b> (UAE time). This page refreshes by itself every 30 seconds while it is on screen, and as soon as you come back to it. <a href="#" id="rnow">↻ Refresh now</a></p>
-<div class="nav"><a href="#msgs">💬 Messages${waiting ? ` (${waiting} new)` : ''}</a><a href="#fb">❤️ Opinions &amp; ideas</a><a href="#use">📊 What they use</a><a href="#show">👀 Show links</a><a href="#visits">📈 Visits</a><a href="/__visits/papers?k=${encodeURIComponent(k)}">📚 Maths papers</a><a href="https://year9.deirarevise.workers.dev/" target="_blank" rel="noopener">🏠 Year 9 hub</a><a href="https://year8.deirarevise.workers.dev/" target="_blank" rel="noopener">🏠 Year 8 hub</a></div><p>Each box: how many <b>devices</b> opened that site that day (UAE time). A device counts once a day per site, however many times it opens it. <small>"· 3 used"</small> = how many of them really used it (2 minutes or more of tapping, typing, scrolling, watching a video or listening). Day total = all the sites' boxes for that day added up; a student who used 3 sites counts 3 there. Total row = each site's days added up. Counting started on 19 Oct 2026. Only you have this link: please keep it private.</p>
+<div class="nav"><a href="#msgs">💬 Messages${waiting ? ` (${waiting} new)` : ''}</a><a href="#fb">❤️ Opinions &amp; ideas</a><a href="#use">📊 What they use</a><a href="#dl">⬇️ Downloads${dlToday ? ` (${dlToday} today)` : ''}</a><a href="#show">👀 Show links</a><a href="#visits">📈 Visits</a><a href="/__visits/papers?k=${encodeURIComponent(k)}">📚 Maths papers</a><a href="https://year9.deirarevise.workers.dev/" target="_blank" rel="noopener">🏠 Year 9 hub</a><a href="https://year8.deirarevise.workers.dev/" target="_blank" rel="noopener">🏠 Year 8 hub</a></div><p>Each box: how many <b>devices</b> opened that site that day (UAE time). A device counts once a day per site, however many times it opens it. <small>"· 3 used"</small> = how many of them really used it (2 minutes or more of tapping, typing, scrolling, watching a video or listening). Day total = all the sites' boxes for that day added up; a student who used 3 sites counts 3 there. Total row = each site's days added up. Counting started on 19 Oct 2026. Only you have this link: please keep it private.</p>
 <p id="me" style="color:var(--brand);font-weight:600"></p>
 <script>(function () { var own = false; try { own = localStorage.getItem('vown') === '1'; } catch (e) {}
   var me = document.getElementById('me'), go = ${JSON.stringify(meUrl)}, done = /[?&]done=1/.test(location.search);
@@ -662,8 +684,10 @@ ${cpi.lock ? `<p>🔒 <b>The lock is ON</b> (since ${when(cpi.lock)}). A device 
 <p><b>Class links</b> for a new phone, tablet or computer: one tap, no password. Send them only in the class group.</p>
 <p>Year 9: <span id="j9">${esc(cpi.join9)}</span> <button type="button" class="ghost" data-copy="j9">Copy</button><br>Year 8: <span id="j8">${esc(cpi.join8)}</span> <button type="button" class="ghost" data-copy="j8">Copy</button> <span id="jd" class="small"></span></p>
 <form method="post" action="/__visits/joinnew" style="margin:0 0 10px">${hid('k', k)}<button type="submit" class="ghost">Make new class links</button> <span class="small">the old class links stop working; devices that have the pass keep it</span></form>` : ''}
-<h2 id="show">👀 Show links</h2><p>A link for someone outside the class, for example a friend, <b>to show them, not to share</b>. It works <b>only on the first device that opens it</b> (a forwarded copy will not open), it can be opened <b>twice only</b>, then it stops (and after 14 days). Choose a year group’s hub to show the hub page <b>and all its subject sites</b>: each go is one visit of about 6 hours, moving freely between them. While they use it, nothing is saved on their device, they are not counted, and the message buttons are hidden. Below you see, for each go: when it was opened, about how long it lasted on the subject sites, and the pages looked at on each site (the link page tells them you can see this). While they look, the address bar shows a private guest address that works only on their device and stops when the visit ends. Only your <b>3 newest</b> links are kept: making a new one deletes older ones (they stop working), and 🗑 Delete removes one at once. <b>Don’t press “Open” yourself to test a link</b>: the first device that presses it is the only one it will work on. (Students use the sites without a password, so someone who deliberately writes down a site’s name could still open it.)</p>
-<form method="post" action="/__visits/pass" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px">${hid('k', k)}<label for="ps">Show:</label><select id="ps" name="site">${[...Object.keys(VHUBS), ...Object.keys(VSITES)].map(s => `<option value="${s}">${esc(vPassName(s))}</option>`).join('')}</select><button type="submit">Make a show link</button></form>
+<h2 id="dl">⬇️ Downloads and prints (last 7 days)</h2><p>Every time a student downloads a file (a worksheet, a paper, a PDF…), opens one, or prints a page, newest first, with how many times that day. All students together: no names and no device numbers. Your own devices and their own saved backups are not counted.</p>
+${dlHTML}
+<h2 id="show">👀 Show links</h2><p>A link for someone outside the class, for example a friend, <b>to show them, not to share</b>. It works <b>only on the first device that opens it</b> (a forwarded copy will not open), it can be opened <b>twice only</b>, then it stops (and after 14 days). Choose a year group’s hub to show the hub page <b>and all its subject sites</b>: each go is one visit of about 6 hours, moving freely between them. While they use it, nothing is saved on their device, they are not counted, and the message buttons are hidden. Below you see, for each go: when it was opened, about how long it lasted on the subject sites, the pages looked at on each site, and any file they downloaded, opened or printed. The link page shows only the site’s name and an Open button. While they look, the address bar shows a private guest address that works only on their device and stops when the visit ends. Only your <b>3 newest</b> links are kept: making a new one deletes older ones (they stop working), and 🗑 Delete removes one at once. <b>Don’t press “Open” yourself to test a link</b>: the first device that presses it is the only one it will work on. (Students use the sites without a password, so someone who deliberately writes down a site’s name could still open it.)</p>
+<form method="post" action="/__visits/pass" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px">${hid('k', k)}<label for="ps">Show:</label><select id="ps" name="site">${Object.keys(VHUBS).map(s => `<option value="${s}">${esc(vPassName(s))}</option>`).join('')}</select><button type="submit">Make a show link</button></form>
 ${newLink ? `<div class="newlink"><b>Your new show link</b> (it is shown only now):<br><span id="nl">${esc(newLink)}</span><br><button type="button" id="cp" style="margin-top:8px">Copy the link</button> <span id="cpd" class="small"></span></div>` : ''}
 ${passes.length ? `<div class="wrap" style="margin-top:10px"><table style="min-width:0"><tr><th>Link for</th><th>Made</th><th>Goes left</th><th style="text-align:left">Opened (UAE time) and sites visited</th><th></th></tr>${passes.map(p => `<tr><td>${esc(vPassName(p.site))}</td><td>${when(p.created)}</td><td>${p.uses > 0 ? p.uses + ' of 2' : 'used up / stopped'}</td><td class="l">${goes(p.tok)}</td><td>${p.uses > 0 ? `<form method="post" action="/__visits/stop" style="margin:0">${hid('k', k)}${hid('id', p.id)}<button type="submit" class="ghost">Stop it</button></form>` : `<form method="post" action="/__visits/reopen" style="margin:0">${hid('k', k)}${hid('id', p.id)}<button type="submit" class="ghost" title="The same link works one more time">↩ Reopen (1 more go)</button></form>`}<form method="post" action="/__visits/del" style="margin:6px 0 0" onsubmit="return confirm('Delete this show link? It stops working and its record is removed.')">${hid('k', k)}${hid('id', p.id)}<button type="submit" class="ghost" title="Remove it from the list; it stops working">🗑 Delete</button></form></td></tr>`).join('')}</table></div>` : ''}
 <h2 id="visits">📈 Visits</h2>

@@ -398,8 +398,8 @@ ${fixesHTML()}
   }
   window.YEAR_HTML = yearHTML;
   // 👀 a show-link visit (user 2026-10-21: "did the friend use the link, for how long, what did he check, which pages"): the pages
-  // opened and the minutes of use go to the server with the visit's own number only, for the person who sent the link (the link
-  // page tells the visitor). Nothing is kept on the visitor's device.
+  // opened and the minutes of use go to the server with the visit's own number only, for the person who sent the link.
+  // Nothing is kept on the visitor's device.
   try {
     const gv = GUEST && sget('gtok');
     if (gv && /^[a-f0-9]{32}$/.test(gv) && navigator.sendBeacon) {
@@ -449,6 +449,41 @@ ${fixesHTML()}
         document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') send(); });
         addEventListener('pagehide', send);
       }
+    }
+  } catch (e) {}
+  // ⬇️ files downloaded, opened or printed (user 2026-10-23: "if someone downloaded let me know"; for show links "let me know how
+  // they use it and if they download from it"): the file's name goes to the owner's page, as a total (students, no device
+  // number) or with the show-link visit's own number. Own backups (.json) and calendar reminders (.ics) are not counted.
+  try {
+    const gv = GUEST && sget('gtok'), own = !GUEST && (() => { try { return localStorage.getItem('vown') === '1'; } catch (e) { return false; } })();
+    if (!own && navigator.sendBeacon && (gv ? /^[a-f0-9]{32}$/.test(gv) : /\.workers\.dev$/.test(location.hostname))) {
+      const FILE = /\.(pdf|docx?|pptx?|xlsx?|zip)(?=$|[?#])/i, sent = {};
+      const fileUse = (kind, name) => {
+        name = String(name || '').trim().slice(0, 80); if (!name || /\.(json|ics)$/i.test(name)) return;
+        const key = kind + ':' + name; if (Date.now() - (sent[key] || 0) < 5000) return; sent[key] = Date.now();
+        navigator.sendBeacon((gv ? '/__guestuse?g=' + gv : '/__visit?p=' + encodeURIComponent(partNow())) + '&dl=' + kind + '&f=' + encodeURIComponent(name));
+      };
+      const nameOf = a => {   // the file's own name; past papers also say which paper, e.g. "Paper 2F · June 2019 QP.pdf"
+        if (a.getAttribute('download')) return a.getAttribute('download');
+        let u; try { u = new URL(a.href, location.href); } catch (e) { return ''; }
+        let n = ''; try { n = decodeURIComponent(u.pathname.split('/').pop() || ''); } catch (e) { n = u.pathname.split('/').pop() || ''; }
+        const pp = u.pathname.match(/Paper-(\w+)/i); return (pp && n.indexOf(pp[1]) < 0 ? 'Paper ' + pp[1] + ' · ' : '') + n;
+      };
+      const linkUse = a => { if (a.hasAttribute('download')) fileUse('dl', nameOf(a)); else if (FILE.test((a.href || '').split('#')[0])) fileUse('open', nameOf(a)); };
+      document.addEventListener('click', e => {   // a tap on a download or file link
+        if (!e.isTrusted) return;
+        const a = e.target.closest && e.target.closest('a[href]'); if (a) linkUse(a);
+        const pb = e.target.closest && e.target.closest('[data-act="pdfprint"][data-f]');   // 🖨️ a PDF printed from its own frame
+        if (pb) { fileUse('print', nameOf({ getAttribute: () => '', href: pb.getAttribute('data-f') })); window.__pdfPrinted = Date.now(); }
+      }, true);
+      const aClick = HTMLAnchorElement.prototype.click;   // files the site makes and saves itself (e.g. a worksheet PDF)
+      HTMLAnchorElement.prototype.click = function () { try { if (this.hasAttribute('download')) fileUse('dl', nameOf(this)); } catch (e) {} return aClick.apply(this, arguments); };
+      addEventListener('beforeprint', () => {   // 🖨️ a page printed: the part of the site and its heading, e.g. "Exam page · P1 Energy"
+        if (Date.now() - (window.__pdfPrinted || 0) < 5000) return;
+        const h = document.querySelector('#print h1, #print h2, #print h3') || document.querySelector('#app h2') || document.querySelector('#app h1');
+        fileUse('print', [uname0(partNow()), h && h.textContent.replace(/\s+/g, ' ').trim().slice(0, 50)].filter(Boolean).join(' · '));
+      });
+      const uname0 = p => p ? p.charAt(0).toUpperCase() + p.slice(1).replace(/-/g, ' ') + ' page' : 'Home page';
     }
   } catch (e) {}
 

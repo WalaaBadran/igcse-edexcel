@@ -148,7 +148,7 @@
     const s = document.createElement('script');
     s.src = 'pp.js?v=15';
     s.onload = () => {   // the worked solutions come next; the questions work without them
-      const w = document.createElement('script'); w.src = 'solutions.js?v=76';
+      const w = document.createElement('script'); w.src = 'solutions.js?v=77';
       w.onload = w.onerror = () => { ppNote(''); const q = ppWait; ppWait = null; q.forEach(f => f()); };
       document.body.appendChild(w);
     };
@@ -164,7 +164,13 @@
     return `<a class="btn small" href="${m[0]}${pg ? '#page=' + pg : ''}" target="_blank" rel="noopener">📄 Open the model answer (Question ${r[5]}${pg ? ', page ' + pg : ''})</a>`; };
   const maUrl = r => { const m = r && r[7] >= 0 && (window.Y8M_MA || {})[window.Y8M_PP.urls[r[7]]]; if (!m) return ''; const pg = m[1][r[5]]; return m[0] + (pg ? '#page=' + pg : ''); };
   const maHTML = r => maLink(r) ? `<div class="sol"><b>✅ Model answer by a maths tutor</b> <span class="meta">(from Physics &amp; Maths Tutor; opens their PDF of the whole paper)</span><p style="margin:8px 0 0">${maLink(r)}</p></div>` : '';
-  const solHTML = id => SOL()[id] ? `<div class="sol"><b>📝 Worked solution</b> <span class="meta">${solMeta(id)}</span><ol>${SOL()[id].map(x => `<li>${esc(x)}</li>`).join('')}</ol></div>` : '';
+  // 🎯 the mark each step earns (user, 24 Oct 2026: "can the solving show the mark at each step telling them what should they do to get
+  // each mark of the question?"): Y8M_SOLMK[id][k] = [official mark-scheme code, what earns it], or 0 for a step with no mark
+  const MKS = () => window.Y8M_SOLMK || {};
+  const mkStep = (id, k, s) => { const m = (MKS()[id] || [])[k]; return esc(s) + (m ? ` <span class="mkp">${esc(m[0])}</span> <span class="mkw">${esc(m[1])}</span>` : ''); };
+  const mkText = (id, k, s) => { const m = (MKS()[id] || [])[k]; return m ? `${s}   [${m[0]}: ${m[1]}]` : s; };
+  const mkLeg = id => MKS()[id] ? '<p class="mkleg">🎯 The mark each step earns: <b>M</b> method · <b>A</b> accuracy · <b>B</b> on its own · <b>P</b> process · <b>C</b> communication</p>' : '';
+  const solHTML = id => SOL()[id] ? `<div class="sol"><b>📝 Worked solution</b> <span class="meta">${solMeta(id)}</span>${mkLeg(id)}<ol>${SOL()[id].map((x, k) => `<li>${mkStep(id, k, x)}</li>`).join('')}</ol></div>` : '';
   const specLabel = s => s === 'GCSE' ? 'GCSE' : 'IGCSE ' + s;
   // A test is three documents, each to preview, print or download: the question paper, the official mark scheme (user, 2026-10-18) and the
   // worked solutions (user, 24 Oct 2026: "a printable copy of the solving like there is a printable copy of mark scheme").
@@ -187,7 +193,8 @@
       + pick.map((r, i) => `<div class="ppq"><p><b>Question ${i + 1}</b>${r[6] ? ` (${r[6]} marks)` : ''} <span class="meta">${esc(src(r))}</span></p>${r[10] & PIC_MS ? `<img src="pp/ms/${r[9]}.webp" alt="Mark scheme ${i + 1}">` : r[8] >= 0 ? `<p class="meta">This one is not cut out yet: see question ${r[5]} in the <a href="${esc(P.urls[r[8]])}">official mark scheme</a>.</p>` : '<p class="meta">No mark scheme was published.</p>'}</div>`).join('');
     const nSol = pick.filter(r => SOL()[r[9]] || maLink(r)).length, noSol = 'No worked solution for this one yet: use the mark scheme.';
     const solInfo = `${info} · step-by-step solutions, in the same order as the questions (${nSol} of ${pick.length} questions have one).`;
-    const sol = `<h2>IGCSE Edexcel Maths: ${esc(title)}: worked solutions</h2><p class="meta">${solInfo} ${solNote}<br>${copy}</p>`
+    const legLong = pick.some(r => MKS()[r[9]]) ? '🎯 Each step shows the mark it earns in the official mark scheme. M = method mark (for the right working). A = accuracy mark (for the right answer; it needs the method mark). B = a mark on its own (for a correct answer or fact). P = process mark (for a correct step in solving a problem). C = communication mark (for a clear statement or reason).' : '';
+    const sol = `<h2>IGCSE Edexcel Maths: ${esc(title)}: worked solutions</h2><p class="meta">${solInfo} ${solNote}<br>${copy}</p>${legLong ? `<p class="mkleg">${legLong}</p>` : ''}`
       + pick.map((r, i) => `<div class="ppq"><p><b>Question ${i + 1}</b>${r[6] ? ` (${r[6]} marks)` : ''} <span class="meta">${esc(src(r))}</span></p>${maHTML(r)}${solHTML(r[9])}${SOL()[r[9]] || maLink(r) ? '' : `<p class="meta">${noSol}</p>`}</div>`).join('');
     const paperBlocks = [{ t: 'title', text: `IGCSE Edexcel Maths: ${title}` }, { t: 'meta', text: `Name: ______________________    Date: ______________    ${info}` }, { t: 'meta', text: `Topics: ${topicsTxt}` }, { t: 'meta', text: `Difficulty: ${levels}` }, { t: 'note', text: copy },
       ...(formula ? [{ t: 'img', src: fsrc, fit: true }, { t: 'break' }] : []),
@@ -195,10 +202,10 @@
     const markBlocks = [{ t: 'title', text: `IGCSE Edexcel Maths: ${title}: mark scheme` }, { t: 'meta', text: `${info} · the official mark schemes, in the same order as the questions.` }, { t: 'note', text: copy },
       ...pick.flatMap((r, i) => [{ t: 'head', text: `Question ${i + 1}${r[6] ? ` (${r[6]} marks)` : ''}`, sub: src(r) },
         r[10] & PIC_MS ? { t: 'img', src: `pp/ms/${r[9]}.webp` } : { t: 'note', text: msMissing(r) }])];
-    const solBlocks = [{ t: 'title', text: `IGCSE Edexcel Maths: ${title}: worked solutions` }, { t: 'meta', text: solInfo }, { t: 'note', text: solNote + ' ' + copy },
+    const solBlocks = [{ t: 'title', text: `IGCSE Edexcel Maths: ${title}: worked solutions` }, { t: 'meta', text: solInfo }, { t: 'note', text: solNote + ' ' + copy }, ...(legLong ? [{ t: 'note', text: legLong }] : []),
       ...pick.flatMap((r, i) => [{ t: 'head', text: `Question ${i + 1}${r[6] ? ` (${r[6]} marks)` : ''}`, sub: src(r) },
         ...(maLink(r) ? [{ t: 'note', text: 'Model answer by Physics & Maths Tutor (online): ' + maUrl(r) }] : []),
-        ...(SOL()[r[9]] ? [{ t: 'steps', title: 'Worked solution ' + solMeta(r[9]), items: SOL()[r[9]] }] : maLink(r) ? [] : [{ t: 'note', text: noSol }])])];
+        ...(SOL()[r[9]] ? [{ t: 'steps', title: 'Worked solution ' + solMeta(r[9]), items: SOL()[r[9]].map((s, k) => mkText(r[9], k, s)) }] : maLink(r) ? [] : [{ t: 'note', text: noSol }])])];
     return { paper, mark, sol, paperBlocks, markBlocks, solBlocks };
   }
   function sheetHTML(pick, title, withMs, withSol) {   // question paper, then the mark schemes, then the worked solutions (📚 Learn a topic → print this topic)
@@ -289,6 +296,6 @@
     });
     update();
   });
-  window.Y8M_TOOLS = { ppLoad, sheetHTML, sheetParts, printSheet };   // for learn.js
+  window.Y8M_TOOLS = { ppLoad, sheetHTML, sheetParts, printSheet, mkStep, mkLeg };   // for learn.js
   render();
 })();

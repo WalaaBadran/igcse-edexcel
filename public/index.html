@@ -201,6 +201,9 @@ section[data-page] { display: none; } section[data-page].on { display: block; }
 .plist li { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; list-style-position: inside; }
 .plist { padding: 0; } .sol { border-left: 4px solid var(--good); background: color-mix(in srgb, var(--good) 8%, var(--card)); padding: 8px 12px; border-radius: 8px; margin: 8px 0; }
 .sol ol { margin: 6px 0 0 18px; padding: 0; } .sol li { margin: 3px 0; }
+/* 🎯 the mark each step earns (24 Oct 2026) */
+.mkp { display: inline-block; font-size: 12px; font-weight: 800; line-height: 1.5; padding: 0 6px; margin-left: 4px; border-radius: 6px; border: 1px solid var(--good); background: color-mix(in srgb, var(--good) 18%, var(--card)); color: var(--ink); white-space: nowrap; }
+.mkw { font-size: 13px; color: var(--muted); } .mkleg { font-size: 13px; color: var(--muted); margin: 4px 0 0; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .step .num { color: #0F141C; } }
 .gh { margin: 12px 0 6px; font-weight: 800; font-size: 14px; color: var(--muted); }
 details.tg > summary.gh { cursor: pointer; list-style: none; margin: 8px 0 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--ink); font-size: 15px; }
@@ -323,9 +326,9 @@ addEventListener('hashchange', showPage); showPage();
 <script src="topics.js?v=11"></script>
 <script src="pdf.js?v=2"></script>
 <script src="ma.js?v=20261023a"></script>
-<script src="app.js?v=113"></script>
+<script src="app.js?v=114"></script>
 <script src="videos.js?v=1"></script>
-<script src="learn.js?v=14"></script>
+<script src="learn.js?v=15"></script>
 <script src="maths-plan.js?v=20261023a"></script>
 <script data-share src="help.js?v=20261024e" data-plain></script>
 <script src="plan.js?v=20261023a" ></script>

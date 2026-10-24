@@ -71,7 +71,8 @@
       return `<div class="card"><h2 style="margin-top:0">🎉 Finished: ${esc(R.title)}</h2><p>You got <b>${got}</b> of ${marks.length}${not ? `. <b>${not}</b> marked “Not yet” will come back tomorrow in <b>Try again</b> on the home page` : ''}.</p>
         <div class="row"><button class="btn ghost" type="button" data-l="prev">← Back</button><button class="btn" type="button" data-l="again">Do them again</button><button class="btn ghost" type="button" data-l="back">${R.from === 'home' ? '← Home' : R.from === 'weak' ? '← My hard topics' : '← Back to the topic'}</button></div></div>`;
     }
-    const steps = SOL()[r[9]] || [], P_ = P(), checked = R.ms || R.sol;
+    const steps = SOL()[r[9]] || [], P_ = P(), checked = R.ms || R.sol, mk = !!(window.Y8M_SOLMK || {})[r[9]];   // mk: the steps show their marks, so they come first
+    const stepH = (k, x) => T() && T().mkStep ? T().mkStep(r[9], k, x) : esc(x);
     const hints = steps.length > 1 ? steps.slice(0, Math.min(R.hint, steps.length - 1)) : [];
     const moreHints = steps.length > 1 && R.hint < steps.length - 1 && !R.sol;
     const help = [
@@ -90,10 +91,10 @@
         <label class="wkans"><b>My answer</b> <input type="text" data-ans="${r[9]}" value="${esc(ANS[r[9]] || '')}" placeholder="Write your final answer" autocomplete="off"></label>
         <p class="small muted" style="margin:6px 0 0">Work it out here or on paper. The help below stays hidden until you ask for it.</p></div>
       ${help ? `<div class="row">${help}</div>` : ''}
-      ${hints.length && !R.sol ? `<div class="lhint">${hints.map((h, k) => `<p><b>💡 Hint ${k + 1}:</b> ${esc(h)}</p>`).join('')}<p class="small muted">Hints are the first steps of the worked solution ${solMeta(r[9])}.</p></div>` : ''}
+      ${hints.length && !R.sol ? `<div class="lhint">${hints.map((h, k) => `<p><b>💡 Hint ${k + 1}:</b> ${stepH(k, h)}</p>`).join('')}<p class="small muted">Hints are the first steps of the worked solution ${solMeta(r[9])}.</p></div>` : ''}
       ${R.ms ? `<p class="small" style="margin:12px 0 0"><b>✅ The official mark scheme</b> <span class="muted">· compare it with your answer</span></p><img class="lq" src="pp/ms/${r[9]}.webp" alt="Mark scheme">` : ''}
-      ${R.sol && maLink(r) ? maHTML(r) + (steps.length ? (R.ai ? '' : `<div class="row"><button class="btn small ghost" type="button" data-l="ai">📝 Show the AI-written steps too</button></div>`) : '') : ''}
-      ${R.sol && (!maLink(r) || R.ai) && steps.length ? `<div class="sol"><b>📝 Step-by-step solution</b> <span class="meta">${solMeta(r[9])}</span><ol>${steps.map(x => `<li>${esc(x)}</li>`).join('')}</ol></div>` : ''}
+      ${R.sol && maLink(r) ? maHTML(r) + (steps.length ? (R.ai || mk ? '' : `<div class="row"><button class="btn small ghost" type="button" data-l="ai">📝 Show the AI-written steps too</button></div>`) : '') : ''}
+      ${R.sol && (!maLink(r) || R.ai || mk) && steps.length ? `<div class="sol"><b>📝 Step-by-step solution</b> <span class="meta">${solMeta(r[9])}</span>${T() && T().mkLeg ? T().mkLeg(r[9]) : ''}<ol>${steps.map((x, k) => `<li>${stepH(k, x)}</li>`).join('')}</ol></div>` : ''}
       ${R.ms && (steps.length || maLink(r)) && !R.sol ? `<div class="row"><button class="btn small ghost" type="button" data-l="sol">${maLink(r) ? '✅ See the model answer' : '📝 See the step-by-step solution'}</button></div>` : ''}
       ${!steps.length && !(r[10] & 2) ? '<p class="small muted">No mark scheme or solution for this one yet.</p>' : !steps.length && !R.ms && !maLink(r) ? '<p class="small muted">No step-by-step solution for this one yet: check with the mark scheme.</p>' : ''}
       ${R.why ? whyHTML() : checked || (!steps.length && !(r[10] & 2)) ? `<div class="row lmark"><span class="small"><b>How did you do?</b></span><button class="btn" type="button" data-l="got">✓ Got it</button><button class="btn ghost" type="button" data-l="not">✗ Not yet</button></div>` : ''}

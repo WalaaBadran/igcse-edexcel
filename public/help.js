@@ -356,6 +356,8 @@ ${fixesHTML()}
      (one title or a list)]. STUDY CONTENT ONLY (user, 23 Oct 2026: "make what is new only for academic issues"): new questions,
      units and answers. Never list the site’s tools or features here (that makes the sites easy to copy), and never thank a student for flagging a mistake (user, 23 Oct 2026). */
   const NEWS = [
+    ['2026-10-24', '📝 NEW in Test practice: 6-mark source questions and 8-mark PEEL questions on food, water, ageing populations and the coast, using your lesson slides. Your test: six 1-mark questions, one 6-mark question and one 8-mark question (20 marks).', 'Year 8 Geography'],
+    ['2026-10-24', '✍️ NEW: Practice questions on Captain Cook and the Age of Exploration: how to answer each type of question, then try, mark yourself and see a model answer.', 'Year 8 History'],
     ['2026-10-23', '🏮 NEW: Lesson 5, Chinese and European exploration: Zheng He, Spain and Portugal, and the Treaty of Tordesillas. Notes, slides, quiz and test practice, with real historical sources and PEEL questions.', 'Year 8 History'],
     ['2026-10-23', '🎖️ NEW: Lesson 5, How were soldiers recruited to fight in WWI? Posters, conscription and Indian soldiers, plus both cover-work booklets. Notes, slides, quiz and test practice, with real soldiers’ letters from 1915 and PEEL questions.', 'Year 9 History'],
     ['2026-10-23', '📋 Your test: six 1-mark questions, one 6-mark question and one 8-mark question (20 marks). Test practice now has more questions like these, including short questions from Oak National Academy.', ['Year 8 History', 'Year 9 History']],

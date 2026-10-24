@@ -356,6 +356,7 @@ ${fixesHTML()}
      (one title or a list)]. STUDY CONTENT ONLY (user, 23 Oct 2026: "make what is new only for academic issues"): new questions,
      units and answers. Never list the site’s tools or features here (that makes the sites easy to copy), and never thank a student for flagging a mistake (user, 23 Oct 2026). */
   const NEWS = [
+    ['2026-10-24', '🏙️ NEW: Lessons 5–7: cooler, cleaner cities (London) and the global energy mix. Notes, slides, quiz and test practice, plus your teacher’s revision comics for every lesson (📖 Revision comics on the home page) and the Independent Revision Questions.', 'Year 8 Geography'],
     ['2026-10-24', '📝 NEW in Test practice: 6-mark source questions and 8-mark PEEL questions on food, water, ageing populations and the coast, using your lesson slides. Your test: six 1-mark questions, one 6-mark question and one 8-mark question (20 marks).', 'Year 8 Geography'],
     ['2026-10-24', '✍️ NEW: Practice questions on Captain Cook and the Age of Exploration: how to answer each type of question, then try, mark yourself and see a model answer.', 'Year 8 History'],
     ['2026-10-23', '🏮 NEW: Lesson 5, Chinese and European exploration: Zheng He, Spain and Portugal, and the Treaty of Tordesillas. Notes, slides, quiz and test practice, with source and PEEL questions.', 'Year 8 History'],

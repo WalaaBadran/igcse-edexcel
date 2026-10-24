@@ -177,7 +177,7 @@
       ${(VID()[g[1]] || []).length ? `<div class="vids"><b>🎬 Learn it first</b> <span class="small muted">free short videos from Corbettmaths (opens their site)</span><ul>${VID()[g[1]].map(v => `<li>${vidLink(v)}</li>`).join('')}</ul></div>` : ''}
       <div class="row"><button class="btn" type="button" data-l="ladder" data-g="${gi}">▶ Practise: easiest first</button>${s.not ? `<button class="btn ghost" type="button" data-l="redo" data-g="${gi}">🔁 Only my “Not yet” (${s.not})</button>` : ''}</div>
       <p class="small muted">Or start at a level:</p><div class="row" style="margin-top:0">${by.map(([b, rs]) => `<button class="btn small ghost" type="button" data-l="level" data-g="${gi}" data-b="${BAND.indexOf(b)}">${b} (${rs.length})</button>`).join('')}</div>
-      <p class="small" style="margin-top:12px"><a href="#" data-l="ppopen" data-g="${gi}">👁️ Open this topic as one paper</a> · <a href="#" data-l="print" data-g="${gi}">🖨 Print it</a> <span class="muted">(up to 100 questions, with mark schemes)</span></p></div>`;
+      <p class="small" style="margin-top:12px"><a href="#" data-l="ppopen" data-g="${gi}">👁️ Open this topic as one paper</a> · <a href="#" data-l="print" data-g="${gi}">🖨 Print it</a> <span class="muted">(up to 100 questions, with mark schemes and worked solutions)</span> · <a href="#" data-l="printsol" data-g="${gi}">📒 Print only the worked solutions</a></p></div>`;
   }
   function draw() {
     const box = $('learn'); if (!box) return;
@@ -230,11 +230,12 @@
   document.addEventListener('click', e => {
     const el = e.target.closest('[data-l]'); if (!el) return;
     const a = el.dataset.l, gi = el.dataset.g !== undefined ? +el.dataset.g : null;
+    if (a === 'printsol') { e.preventDefault(); const rows = easyFirst(rowsOf(gi)).slice(0, 100); T().printSheet(T().sheetParts(rows, P().groups[gi][1]).sol); return; }
     if (a === 'print') { e.preventDefault(); const rows = easyFirst(rowsOf(gi)).slice(0, 100); T().printSheet(T().sheetHTML(rows, P().groups[gi][1], true, true)); return; }
     // 👁️ see the paper on screen first (user 2026-10-19: "for any printable make it available for open or viewing also")
     if (a === 'ppopen') { e.preventDefault(); const rows = easyFirst(rowsOf(gi)).slice(0, 100), v = document.createElement('div'); v.id = 'ppview';
       v.style.cssText = 'position:fixed;inset:0;z-index:1500;overflow:auto;background:var(--bg,#fff)';
-      v.innerHTML = `<div style="position:sticky;top:0;z-index:1;display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 12px;background:var(--card,#fff);border-bottom:1px solid var(--line,#ddd)"><b style="flex:1;min-width:140px">${esc(P().groups[gi][1])}: one paper</b><button class="btn small" type="button" data-l="print" data-g="${gi}">🖨 Print</button><button class="btn small ghost" type="button" data-l="ppclose">Close ✕</button></div>
+      v.innerHTML = `<div style="position:sticky;top:0;z-index:1;display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 12px;background:var(--card,#fff);border-bottom:1px solid var(--line,#ddd)"><b style="flex:1;min-width:140px">${esc(P().groups[gi][1])}: one paper</b><button class="btn small" type="button" data-l="print" data-g="${gi}">🖨 Print</button><button class="btn small ghost" type="button" data-l="printsol" data-g="${gi}">📒 Print the worked solutions</button><button class="btn small ghost" type="button" data-l="ppclose">Close ✕</button></div>
         <style>#ppview img{max-width:100%!important;height:auto!important}#ppview{overflow-x:hidden}</style><div style="max-width:820px;margin:0 auto;padding:12px">${T().sheetHTML(rows, P().groups[gi][1], true, true)}</div>`;
       document.getElementById('ppview')?.remove(); document.body.appendChild(v); return; }
     if (a === 'ppclose') { e.preventDefault(); document.getElementById('ppview')?.remove(); return; }

@@ -105,18 +105,18 @@
   function drawSheet(note) {
     lastTestNote();
     if (!WS) { $('sheet').innerHTML = ''; return; }
-    const v = WS.view, q = v === 'q', mk = v === 'mark', what = q ? 'question paper' : 'mark scheme';
+    const v = WS.view, q = v === 'q', mk = v === 'mark', what = q ? 'question paper' : v === 'sol' ? 'worked solutions' : 'mark scheme';
     $('sheet').innerHTML = `<div class="sheet"><div class="noprint wsbar">
-      <div class="wstabs" role="tablist"><button type="button" role="tab" aria-selected="${q}" data-ws="view" data-v="q">📄 Question paper</button><button type="button" role="tab" aria-selected="${v === 'ms'}" data-ws="view" data-v="ms">✅ Mark scheme</button><button type="button" role="tab" aria-selected="${mk}" data-ws="view" data-v="mark">📝 Mark my test</button></div>
+      <div class="wstabs" role="tablist"><button type="button" role="tab" aria-selected="${q}" data-ws="view" data-v="q">📄 Question paper</button><button type="button" role="tab" aria-selected="${v === 'ms'}" data-ws="view" data-v="ms">✅ Mark scheme</button><button type="button" role="tab" aria-selected="${v === 'sol'}" data-ws="view" data-v="sol">📒 Worked solutions</button><button type="button" role="tab" aria-selected="${mk}" data-ws="view" data-v="mark">📝 Mark my test</button></div>
       ${mk ? `<div class="row" style="margin-top:10px"><button class="btn ghost" type="button" data-ws="close">Close</button></div>` : `<div class="row" style="margin-top:10px"><button class="btn" type="button" data-ws="print">🖨 Print the ${what}</button><button class="btn ghost" type="button" data-ws="pdf">⬇ Download the ${what} (PDF)</button><button class="btn ghost" type="button" data-ws="close">Close</button></div>`}
-      <p class="small muted" id="wsnote" style="margin:8px 0 0">${note || (q ? 'Below is a preview of the question paper. The mark scheme (with step-by-step solutions) is on the other tab, so you can print it separately. After doing the test, use 📝 Mark my test.' : mk ? 'Your marks are saved on this device, so you can finish marking later.' : 'Below is a preview of the mark scheme, with step-by-step solutions where we have them.')}</p></div>
-      <div class="wsview">${mk ? markHTML() : (q ? WS.parts.paper : WS.parts.mark).replace(/<img /g, '<img loading="lazy" ')}</div></div>`;
+      <p class="small muted" id="wsnote" style="margin:8px 0 0">${note || (q ? 'Below is a preview of the question paper. The mark scheme and the worked solutions are on the other tabs, so you can print each one separately. After doing the test, use 📝 Mark my test.' : mk ? 'Your marks are saved on this device, so you can finish marking later.' : v === 'sol' ? 'Below is a preview of the step-by-step worked solutions, in the same order as the questions.' : 'Below is a preview of the official mark scheme. The step-by-step solutions are on the 📒 Worked solutions tab.')}</p></div>
+      <div class="wsview">${mk ? markHTML() : (q ? WS.parts.paper : v === 'sol' ? WS.parts.sol : WS.parts.mark).replace(/<img /g, '<img loading="lazy" ')}</div></div>`;
   }
   async function downloadSheet(btn) {
-    const q = WS.view === 'q', note = $('wsnote'), file = `${WS.name}${q ? '' : '-mark-scheme'}.pdf`;
+    const v = WS.view, note = $('wsnote'), file = `${WS.name}${v === 'q' ? '' : v === 'sol' ? '-worked-solutions' : '-mark-scheme'}.pdf`;
     btn.disabled = true;
     try {
-      await window.Y8M_PDF.save(q ? WS.parts.paperBlocks : WS.parts.markBlocks, file, f => { if (note) note.textContent = `Making the PDF… ${Math.round(f * 100)}%`; });
+      await window.Y8M_PDF.save(v === 'q' ? WS.parts.paperBlocks : v === 'sol' ? WS.parts.solBlocks : WS.parts.markBlocks, file, f => { if (note) note.textContent = `Making the PDF… ${Math.round(f * 100)}%`; });
       if (note) note.textContent = `✓ Saved as ${file} (look in your Downloads).`;
     } catch (e) { if (note) note.textContent = 'The PDF could not be made on this device. Use 🖨 Print and choose "Save as PDF" instead.'; }
     btn.disabled = false;
@@ -162,10 +162,12 @@
   // ma.js maps a question-paper link to PMT's model-answer PDF and each question's page. Link only: PMT's work is not copied.
   const maLink = r => { const P_ = window.Y8M_PP, m = r && r[7] >= 0 && (window.Y8M_MA || {})[P_.urls[r[7]]]; if (!m) return ''; const pg = m[1][r[5]];
     return `<a class="btn small" href="${m[0]}${pg ? '#page=' + pg : ''}" target="_blank" rel="noopener">📄 Open the model answer (Question ${r[5]}${pg ? ', page ' + pg : ''})</a>`; };
+  const maUrl = r => { const m = r && r[7] >= 0 && (window.Y8M_MA || {})[window.Y8M_PP.urls[r[7]]]; if (!m) return ''; const pg = m[1][r[5]]; return m[0] + (pg ? '#page=' + pg : ''); };
   const maHTML = r => maLink(r) ? `<div class="sol"><b>✅ Model answer by a maths tutor</b> <span class="meta">(from Physics &amp; Maths Tutor; opens their PDF of the whole paper)</span><p style="margin:8px 0 0">${maLink(r)}</p></div>` : '';
   const solHTML = id => SOL()[id] ? `<div class="sol"><b>📝 Worked solution</b> <span class="meta">${solMeta(id)}</span><ol>${SOL()[id].map(x => `<li>${esc(x)}</li>`).join('')}</ol></div>` : '';
   const specLabel = s => s === 'GCSE' ? 'GCSE' : 'IGCSE ' + s;
-  // A test is two documents (user, 2026-10-18): the question paper, and the mark scheme with worked solutions, each to preview, print or download.
+  // A test is three documents, each to preview, print or download: the question paper, the official mark scheme (user, 2026-10-18) and the
+  // worked solutions (user, 24 Oct 2026: "a printable copy of the solving like there is a printable copy of mark scheme").
   // sheetParts gives both as HTML (preview and print) and as blocks for pdf.js (⬇ Download PDF).
   // 📐 Formula sheet (user: on by default 2026-10-18; the box starts empty since 2026-10-23): the official IGCSE 4MA1 sheet. Foundation sheet when every
   // question is from a Foundation paper, otherwise the Higher sheet (it has everything on the Foundation one and more).
@@ -181,20 +183,27 @@
     const paper = `<h2>IGCSE Edexcel Maths: ${esc(title)}</h2><p class="meta">Name: ____________________ Date: ____________ · ${info}<br>Topics: ${esc(topicsTxt)}<br>Difficulty: ${levels}<br>${copy}</p>`
       + (formula ? `<div class="formula"><img src="${fsrc}" alt="Formulae sheet"></div><div class="page-break"></div>` : '')
       + pick.map((r, i) => `<div class="ppq"><p><b>Question ${i + 1}</b>${r[6] ? ` (${r[6]} marks)` : ''} <span class="meta">${esc(src(r))} · ${esc(P.subs[r[0]][1])} · ${PP_BAND[r[1]]}</span></p><img src="pp/q/${r[9]}.webp" alt="Question ${i + 1}"></div>`).join('');
-    const mark = `<h2>IGCSE Edexcel Maths: ${esc(title)}: mark scheme</h2><p class="meta">${info} · the official mark schemes, in the same order as the questions.${withSol ? ' ' + solNote : ''}<br>${copy}</p>`
-      + pick.map((r, i) => `<div class="ppq"><p><b>Question ${i + 1}</b>${r[6] ? ` (${r[6]} marks)` : ''} <span class="meta">${esc(src(r))}</span></p>${r[10] & PIC_MS ? `<img src="pp/ms/${r[9]}.webp" alt="Mark scheme ${i + 1}">` : r[8] >= 0 ? `<p class="meta">This one is not cut out yet: see question ${r[5]} in the <a href="${esc(P.urls[r[8]])}">official mark scheme</a>.</p>` : '<p class="meta">No mark scheme was published.</p>'}${withSol ? maHTML(r) + solHTML(r[9]) : ''}</div>`).join('');
+    const mark = `<h2>IGCSE Edexcel Maths: ${esc(title)}: mark scheme</h2><p class="meta">${info} · the official mark schemes, in the same order as the questions.${withSol ? ' The step-by-step solutions are a separate document: 📒 Worked solutions.' : ''}<br>${copy}</p>`
+      + pick.map((r, i) => `<div class="ppq"><p><b>Question ${i + 1}</b>${r[6] ? ` (${r[6]} marks)` : ''} <span class="meta">${esc(src(r))}</span></p>${r[10] & PIC_MS ? `<img src="pp/ms/${r[9]}.webp" alt="Mark scheme ${i + 1}">` : r[8] >= 0 ? `<p class="meta">This one is not cut out yet: see question ${r[5]} in the <a href="${esc(P.urls[r[8]])}">official mark scheme</a>.</p>` : '<p class="meta">No mark scheme was published.</p>'}</div>`).join('');
+    const nSol = pick.filter(r => SOL()[r[9]] || maLink(r)).length, noSol = 'No worked solution for this one yet: use the mark scheme.';
+    const solInfo = `${info} · step-by-step solutions, in the same order as the questions (${nSol} of ${pick.length} questions have one).`;
+    const sol = `<h2>IGCSE Edexcel Maths: ${esc(title)}: worked solutions</h2><p class="meta">${solInfo} ${solNote}<br>${copy}</p>`
+      + pick.map((r, i) => `<div class="ppq"><p><b>Question ${i + 1}</b>${r[6] ? ` (${r[6]} marks)` : ''} <span class="meta">${esc(src(r))}</span></p>${maHTML(r)}${solHTML(r[9])}${SOL()[r[9]] || maLink(r) ? '' : `<p class="meta">${noSol}</p>`}</div>`).join('');
     const paperBlocks = [{ t: 'title', text: `IGCSE Edexcel Maths: ${title}` }, { t: 'meta', text: `Name: ______________________    Date: ______________    ${info}` }, { t: 'meta', text: `Topics: ${topicsTxt}` }, { t: 'meta', text: `Difficulty: ${levels}` }, { t: 'note', text: copy },
       ...(formula ? [{ t: 'img', src: fsrc, fit: true }, { t: 'break' }] : []),
       ...pick.flatMap((r, i) => [{ t: 'head', text: `Question ${i + 1}${r[6] ? ` (${r[6]} marks)` : ''}`, sub: `${src(r)} · ${P.subs[r[0]][1]} · ${PP_BAND[r[1]]}` }, { t: 'img', src: `pp/q/${r[9]}.webp` }])];
-    const markBlocks = [{ t: 'title', text: `IGCSE Edexcel Maths: ${title}: mark scheme` }, { t: 'meta', text: `${info} · the official mark schemes, in the same order as the questions.` }, { t: 'note', text: (withSol ? solNote + ' ' : '') + copy },
+    const markBlocks = [{ t: 'title', text: `IGCSE Edexcel Maths: ${title}: mark scheme` }, { t: 'meta', text: `${info} · the official mark schemes, in the same order as the questions.` }, { t: 'note', text: copy },
       ...pick.flatMap((r, i) => [{ t: 'head', text: `Question ${i + 1}${r[6] ? ` (${r[6]} marks)` : ''}`, sub: src(r) },
-        r[10] & PIC_MS ? { t: 'img', src: `pp/ms/${r[9]}.webp` } : { t: 'note', text: msMissing(r) },
-        ...(withSol && SOL()[r[9]] ? [{ t: 'steps', title: 'Worked solution ' + solMeta(r[9]), items: SOL()[r[9]] }] : [])])];
-    return { paper, mark, paperBlocks, markBlocks };
+        r[10] & PIC_MS ? { t: 'img', src: `pp/ms/${r[9]}.webp` } : { t: 'note', text: msMissing(r) }])];
+    const solBlocks = [{ t: 'title', text: `IGCSE Edexcel Maths: ${title}: worked solutions` }, { t: 'meta', text: solInfo }, { t: 'note', text: solNote + ' ' + copy },
+      ...pick.flatMap((r, i) => [{ t: 'head', text: `Question ${i + 1}${r[6] ? ` (${r[6]} marks)` : ''}`, sub: src(r) },
+        ...(maLink(r) ? [{ t: 'note', text: 'Model answer by Physics & Maths Tutor (online): ' + maUrl(r) }] : []),
+        ...(SOL()[r[9]] ? [{ t: 'steps', title: 'Worked solution ' + solMeta(r[9]), items: SOL()[r[9]] }] : maLink(r) ? [] : [{ t: 'note', text: noSol }])])];
+    return { paper, mark, sol, paperBlocks, markBlocks, solBlocks };
   }
-  function sheetHTML(pick, title, withMs, withSol) {   // question paper with the mark schemes at the end (📚 Learn a topic → print this topic)
+  function sheetHTML(pick, title, withMs, withSol) {   // question paper, then the mark schemes, then the worked solutions (📚 Learn a topic → print this topic)
     const x = sheetParts(pick, title, withSol);
-    return x.paper + (withMs || withSol ? '<div class="page-break"></div>' + x.mark : '');
+    return x.paper + (withMs ? '<div class="page-break"></div>' + x.mark : '') + (withSol ? '<div class="page-break"></div>' + x.sol : '');
   }
   // Tall pictures are split at blank lines, so a printed page never cuts through a line of text.
   function sliceTall(box) {
@@ -248,7 +257,7 @@
     if (ws && WS) {
       const act = ws.dataset.ws;
       if (act === 'view') { WS.view = ws.dataset.v; drawSheet(); }
-      else if (act === 'print') printSheet(WS.view === 'q' ? WS.parts.paper : WS.parts.mark);
+      else if (act === 'print') printSheet(WS.view === 'q' ? WS.parts.paper : WS.view === 'sol' ? WS.parts.sol : WS.parts.mark);
       else if (act === 'pdf') downloadSheet(ws);
       else if (act === 'close') { WS = null; drawSheet(); }
       else if (act === 'mkms') { const i = +ws.dataset.i, r = WS.pick[i], box = $('mkms' + i); box.innerHTML = box.innerHTML ? '' : `<img class="lq" src="pp/${r[10] & 2 ? 'ms' : 'q'}/${r[9]}.webp" alt="">${r[10] & 2 ? maHTML(r) + ((window.Y8M_SOL || {})[r[9]] ? solHTML(r[9]) : '') : ''}`; }
@@ -280,6 +289,6 @@
     });
     update();
   });
-  window.Y8M_TOOLS = { ppLoad, sheetHTML, printSheet };   // for learn.js
+  window.Y8M_TOOLS = { ppLoad, sheetHTML, sheetParts, printSheet };   // for learn.js
   render();
 })();

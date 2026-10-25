@@ -460,6 +460,71 @@ ${fixesHTML()}
       }
     }
   } catch (e) {}
+  // 📊 weekly survey (user 2026-10-25: "a pop up survey percentage at the beginning of each site telling how much benefit they
+  // get"; one overall %, "at the end of each week like sundays morning"): from Sunday 6:00 UAE time, the first time this device
+  // opens this site that week, ONE question: how much does this site help you? (0–100%; nothing is chosen until tapped).
+  // Sent or skipped = not asked again until next Sunday. Only on devices that first opened the site 3+ days ago; never on the
+  // owner's devices or show links. The server keeps totals per site and week only (no device number): owner page 📊 Weekly %.
+  try {
+    const own = (() => { try { return localStorage.getItem('vown') === '1'; } catch (e) { return true; } })();
+    if (/\.workers\.dev$/.test(location.hostname) && !GUEST && !own && navigator.sendBeacon) {
+      const now = new Date(Date.now() + 4 * 3600e3), today = now.toISOString().slice(0, 10);   // UAE time, in the UTC fields
+      const st = new Date(now.getTime() - 6 * 3600e3); st.setUTCDate(st.getUTCDate() - st.getUTCDay());
+      const wk = st.toISOString().slice(0, 10);   // the Sunday this survey week started (6:00 UAE)
+      let first = today, done = wk;
+      try { first = localStorage.getItem('rate-first') || ''; if (!first) { first = today; localStorage.setItem('rate-first', today); } done = localStorage.getItem('rate-wk') || ''; } catch (e) {}
+      if (done !== wk && Date.parse(today) - Date.parse(first) >= 3 * 864e5) {
+        const hs = location.hostname.split('.')[0].split('-'), sub = hs[1] || '';
+        const name = 'Year ' + ((hs[0].match(/\d+/) || [''])[0]) + ' ' + (sub === 'math' ? 'Maths' : sub.charAt(0).toUpperCase() + sub.slice(1));
+        let tries = 0;
+        const show = () => {
+          // wait while something else is on screen (launch splash, another pop-up, the update bar) or the student is typing
+          const ae = document.activeElement || {};
+          const seen = el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);   // hidden panels don't count
+          const busy = [...document.querySelectorAll('#splash, .ms-wrap, .pl-splash, .upd-bar, .rate-wrap, [role="dialog"], [aria-modal="true"]')].some(seen)
+            || /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName || '') || ae.isContentEditable;
+          if (busy || document.visibilityState !== 'visible') { if (++tries < 40) setTimeout(show, 15000); return; }
+          const css = document.createElement('style');
+          css.textContent = '.rate-wrap{position:fixed;inset:0;z-index:9998;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:16px}'
+            + '.rate-card{background:var(--card,#fff);color:var(--ink,#1d2433);max-width:380px;width:100%;border-radius:20px;padding:20px 18px 16px;box-shadow:0 20px 50px rgba(0,0,0,.35);text-align:center;font-family:inherit}'
+            + '.rate-card h2{margin:4px 0 6px;font-size:20px;line-height:1.3}.rate-card p{margin:0 0 12px;color:var(--muted,#5b6475);font-size:14px}'
+            + '.rate-val{font-size:34px;font-weight:800;line-height:1.1;margin:2px 0 4px;color:var(--brand,#4F46E5)}.rate-val.wait{font-size:15px;font-weight:600;color:var(--muted,#5b6475);padding:9px 0}'
+            + '.rate-range{width:100%;height:30px;margin:0;accent-color:var(--brand,#4F46E5);cursor:pointer}.rate-range.untouched{accent-color:#98a2b3;opacity:.75}'
+            + '.rate-ends{display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted,#5b6475);margin:2px 2px 14px}'
+            + '.rate-go{border:0;border-radius:12px;padding:11px 24px;font:inherit;font-weight:800;background:var(--brand,#4F46E5);color:#fff;cursor:pointer}.rate-go:disabled{opacity:.45;cursor:default}'
+            + '.rate-later{border:0;background:none;color:var(--muted,#5b6475);font:inherit;font-size:14px;text-decoration:underline;cursor:pointer;margin-left:12px}';
+          document.head.appendChild(css);
+          const w = document.createElement('div'); w.className = 'rate-wrap';
+          w.setAttribute('role', 'dialog'); w.setAttribute('aria-modal', 'true'); w.setAttribute('aria-labelledby', 'rate-t');
+          w.innerHTML = '<div class="rate-card"><div style="font-size:30px" aria-hidden="true">📊</div><h2 id="rate-t">How much does ' + name + ' help you with your studies?</h2>'
+            + '<p>No names. Your answer helps make this site better.</p>'
+            + '<div class="rate-val wait" aria-live="polite">👉 Slide to choose</div>'
+            + '<input type="range" class="rate-range untouched" min="0" max="100" step="10" value="50" aria-label="How much it helps, in percent">'
+            + '<div class="rate-ends"><span>😕 0% not at all</span><span>a lot 100% 🤩</span></div>'
+            + '<button type="button" class="rate-go" disabled>Send</button><button type="button" class="rate-later">Skip this week</button></div>';
+          let pick = null;
+          const mark = () => { try { localStorage.setItem('rate-wk', wk); } catch (e) {} };
+          const close = () => { mark(); w.remove(); css.remove(); document.removeEventListener('keydown', key); };
+          const key = e => { if (e.key === 'Escape') close(); };
+          // the slider starts grey with no number shown; Send works only after the student moves it (user 2026-10-25: "make in sliding")
+          const rg = w.querySelector('.rate-range'), val = w.querySelector('.rate-val');
+          const moved = () => { pick = rg.value; rg.classList.remove('untouched'); val.classList.remove('wait'); val.textContent = pick + '%'; w.querySelector('.rate-go').disabled = false; };
+          rg.addEventListener('input', moved); rg.addEventListener('change', moved); rg.addEventListener('click', moved);   // a tap on the middle = 50%
+          w.querySelector('.rate-go').onclick = () => {
+            if (pick === null) return;
+            mark(); navigator.sendBeacon('/__rate?p=' + pick);
+            w.querySelector('.rate-card').innerHTML = '<div style="font-size:34px" aria-hidden="true">💛</div><h2>Thank you for telling us!</h2><p>See you next week.</p>';
+            setTimeout(close, 1800);
+          };
+          w.querySelector('.rate-later').onclick = close;
+          document.addEventListener('keydown', key);
+          document.body.appendChild(w);
+          rg.focus({ preventScroll: true });
+        };
+        setTimeout(show, 4000);
+      }
+    }
+  } catch (e) {}
   // ⬇️ files downloaded, opened or printed (user 2026-10-23: "if someone downloaded let me know"; for show links "let me know how
   // they use it and if they download from it"): the file's name goes to the owner's page, as a total (students, no device
   // number) or with the show-link visit's own number. Own backups (.json) and calendar reminders (.ics) are not counted.

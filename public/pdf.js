@@ -1,6 +1,9 @@
 // ⬇ Download PDF: builds a real A4 PDF file in the browser (no outside library, nothing is uploaded).
 // Each page is drawn on a canvas (text + the question pictures), saved as a JPEG and wrapped in a small PDF.
-// Tall pictures are split at blank lines, so a line of a question is never cut in half.
+// A question picture that fits on one page is never split: it starts on the next page, with its heading (user 2026-10-25,
+// screenshots of a diagram cut in half: "can you resolve anything like this"). Only pictures taller than a page are split,
+// at a blank gap; the margin strips of the papers ("do not write in this area", "leave blank" columns, side rules) are
+// ignored when looking for a gap, because they run down the whole picture and used to hide every gap.
 // Y8M_PDF.save(blocks, filename, onProgress). blocks: {t:'title'|'meta'|'head'|'note', text, sub} · {t:'img', src} · {t:'steps', title, items} · {t:'break'}
 (function () {
   const W = 1240, H = 1754, M = 74, CW = W - 2 * M, TOP = 70, BOTTOM = H - 80;   // A4 at 150 dpi, 12.5 mm margins
@@ -22,10 +25,15 @@
   function blankRows(img) {   // which rows of the picture are white (safe places to cut)
     const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
     const g = c.getContext('2d'); g.drawImage(img, 0, 0);
-    const d = g.getImageData(0, 0, c.width, c.height).data, rows = new Uint8Array(c.height);
-    for (let y = 0; y < c.height; y++) {
+    const w = c.width, h = c.height, d = g.getImageData(0, 0, w, h).data, rows = new Uint8Array(h), dark = new Uint32Array(w);
+    const isDark = k => d[k] < 200 || d[k + 1] < 200 || d[k + 2] < 200;
+    // margin strips: columns near the left or right edge that are dark in a quarter of the rows or more (rules, hatched bands)
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if ((x < w * 0.15 || x > w * 0.8) && isDark((y * w + x) * 4)) dark[x]++;
+    const skip = new Uint8Array(w);
+    for (let x = 0; x < w; x++) if (dark[x] > h * 0.25) for (let k = Math.max(0, x - 3); k <= Math.min(w - 1, x + 3); k++) skip[k] = 1;
+    for (let y = 0; y < h; y++) {
       let ok = 1;
-      for (let x = Math.floor(c.width * 0.03); x < c.width * 0.97; x += 2) { const k = (y * c.width + x) * 4; if (d[k] < 200 || d[k + 1] < 200 || d[k + 2] < 200) { ok = 0; break; } }
+      for (let x = Math.floor(w * 0.01); x < w * 0.99; x += 2) { if (skip[x]) continue; if (isDark((y * w + x) * 4)) { ok = 0; break; } }
       rows[y] = ok;
     }
     return rows;
@@ -33,6 +41,8 @@
 
   async function render(blocks, onProgress) {
     const pages = []; let g, y;
+    const cache = new Map(), getImg = src => { if (!cache.has(src)) cache.set(src, loadImg(src)); return cache.get(src); };
+    const imgH = im => im.naturalHeight * CW / im.naturalWidth;   // height on the page at full width
     const newPage = () => { const c = document.createElement('canvas'); c.width = W; c.height = H; g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, W, H); g.fillStyle = '#111'; g.textBaseline = 'top'; pages.push(c); y = TOP; };
     const room = h => { if (y + h > BOTTOM) newPage(); };
     const text = (s, size, weight, color, gap) => {
@@ -48,14 +58,20 @@
       else if (b.t === 'title') text(b.text, 34, 800, '#111', 6);
       else if (b.t === 'meta') text(b.text, 19, 400, '#444', 4);
       else if (b.t === 'note') text(b.text, 19, 400, '#555', 10);
-      else if (b.t === 'head') {   // question heading: keep it with at least the start of its picture
-        room(200); y += 10;
+      else if (b.t === 'head') {   // question heading: keep it with its picture (all of it when the picture fits on one page)
+        const nx = blocks[bi + 1], im = nx && nx.t === 'img' && !nx.fit ? await getImg(nx.src) : null;
+        g.font = `400 17px ${FONT}`;
+        const headH = 50 + (b.sub ? wrap(g, b.sub, CW).length * 22 : 0), ph = im ? imgH(im) : 0;
+        if (im && ph <= BOTTOM - TOP - headH) { if (y + headH + ph > BOTTOM && y > TOP) newPage(); }
+        else if (im && y > TOP && BOTTOM - y - headH < (BOTTOM - TOP) * 0.6) newPage();   // a very tall question starts high on a page
+        else room(200);
+        y += 10;
         g.font = `800 25px ${FONT}`; g.fillStyle = '#111'; g.fillText(b.text, M, y); y += 34;
         if (b.sub) { g.font = `400 17px ${FONT}`; g.fillStyle = '#555'; for (const l of wrap(g, b.sub, CW)) { g.fillText(l, M, y); y += 22; } }
         y += 6;
       }
       else if (b.t === 'img') {
-        const img = await loadImg(b.src);
+        const img = await getImg(b.src);
         if (!img) { text('(picture missing)', 19, 400, '#999', 6); continue; }
         if (b.fit) {   // one whole picture shrunk to fit the space left on this page (the formula sheet)
           if (BOTTOM - y < 600) newPage();
@@ -63,6 +79,11 @@
           g.drawImage(img, M + (CW - w) / 2, y, w, h); y += h + 14; continue;
         }
         const s = CW / img.naturalWidth, IH = img.naturalHeight;
+        if (IH * s <= BOTTOM - TOP) {   // fits on one page: never split, start a new page if needed
+          if (y + IH * s > BOTTOM) newPage();
+          g.drawImage(img, M, y, CW, IH * s); y += IH * s + 14; continue;
+        }
+        if (y > TOP && BOTTOM - y < (BOTTOM - TOP) * 0.6) newPage();
         let rows = null, sy = 0;
         while (sy < IH) {
           let avail = Math.floor((BOTTOM - y) / s);
@@ -70,7 +91,14 @@
           let ey = IH;
           if (IH - sy > avail) {   // does not fit: cut at a blank line
             rows = rows || blankRows(img); ey = sy + avail;
-            for (let k = sy + avail; k > sy + avail * 0.4; k--) if (rows[k] && rows[k - 3] && rows[k + 3]) { ey = k; break; }
+            // cut in the middle of the widest white gap in the lower part of the space (a gap between parts of the question,
+            // not the small gaps inside a diagram or between lines)
+            let best = -1, bestLen = 0, run = 0;
+            for (let k = sy + Math.floor(avail * 0.35); k <= sy + avail; k++) {
+              if (rows[k]) run++;
+              if (!rows[k] || k === sy + avail) { if (run >= 6 && run >= bestLen) { bestLen = run; best = rows[k] ? k - 2 : k - Math.ceil(run / 2); } if (!rows[k]) run = 0; }
+            }
+            if (best > sy) ey = best;
           }
           g.drawImage(img, 0, sy, img.naturalWidth, ey - sy, M, y, CW, (ey - sy) * s);
           y += (ey - sy) * s; sy = ey;

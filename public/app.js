@@ -221,12 +221,18 @@
       if (!W || H < W * (PAGE + 0.1)) continue;
       let px;
       try { const c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d'); g.drawImage(img, 0, 0); px = g.getImageData(0, 0, W, H).data; } catch (e) { continue; }
-      const blank = y => { for (let x = Math.floor(W * 0.03); x < W * 0.97; x += 2) { const k = (y * W + x) * 4; if (px[k] < 200 || px[k + 1] < 200 || px[k + 2] < 200) return false; } return true; };
+      // margin strips near the edges (side rules, "do not write in this area" bands) run down the whole picture: ignore them,
+      // or no line would ever look blank (user 2026-10-25: diagrams were cut in half)
+      const dk = new Uint32Array(W), skip = new Uint8Array(W);
+      for (let yy = 0; yy < H; yy += 2) for (let x = 0; x < W; x++) if (x < W * 0.15 || x > W * 0.8) { const k = (yy * W + x) * 4; if (px[k] < 200 || px[k + 1] < 200 || px[k + 2] < 200) dk[x]++; }
+      for (let x = 0; x < W; x++) if (dk[x] > H / 8) for (let j = Math.max(0, x - 3); j <= Math.min(W - 1, x + 3); j++) skip[j] = 1;
+      const blank = y => { for (let x = Math.floor(W * 0.01); x < W * 0.99; x += 2) { if (skip[x]) continue; const k = (y * W + x) * 4; if (px[k] < 200 || px[k + 1] < 200 || px[k + 2] < 200) return false; } return true; };
       const cuts = [0];
       while (H - cuts[cuts.length - 1] > W * PAGE) {
         const top = cuts[cuts.length - 1], want = Math.floor(top + W * PAGE), low = Math.floor(top + W * 0.5);
         let cut = want;
-        for (let y = want; y > low; y--) if (blank(y) && blank(y - 3) && blank(y + 3)) { cut = y; break; }
+        let bestLen = 0, run = 0;   // the middle of the widest white gap (between parts of the question, not inside a diagram)
+        for (let y = low; y <= want; y++) { const b = blank(y); if (b) run++; if (!b || y === want) { if (run >= 6 && run >= bestLen) { bestLen = run; cut = b ? y - 2 : y - Math.ceil(run / 2); } if (!b) run = 0; } }
         cuts.push(cut);
       }
       cuts.push(H);

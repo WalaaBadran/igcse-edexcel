@@ -460,6 +460,51 @@ ${fixesHTML()}
       }
     }
   } catch (e) {}
+  // 🚩 a flag on every box, question and key term on every subject site (user 2026-10-25, French site: "add flag at each stage to
+  // flag not working or wrong things whether info or question", then "yes add flags to all subjects"). It opens 📣 Tell us →
+  // 🚩 Found a mistake with the page name and that box's text already filled in, so the message says exactly where it is.
+  // Boxes: cards, quick-revision boxes, Maths practice and test questions (innermost only, never links, the trophies card or
+  // boxes that already have a report button); rows of key-term / word tables; the word asked in a typed quiz. Not in guest
+  // visits (no Tell us there) and never printed.
+  try {
+    if (!GUEST && !SHARE && window.TELLUS) {   // not on the IGCSE copy that anyone may share
+      const BLOCK = '.card, .qbox, .lq, .ppq';
+      const SKIP = 'a, .funcard, .gtcard, .hcard, .newsbar, .flagbar, .dedication, .topic';
+      const fcss = document.createElement('style');
+      fcss.textContent = '#app .flagged{position:relative;padding-right:46px}'
+        + '.qflag{position:absolute;top:8px;right:8px;width:32px;height:32px;border:1px solid var(--line,#e3e7ef);border-radius:999px;background:var(--card,#fff);font-size:14px;line-height:1;cursor:pointer;opacity:.7;padding:0;z-index:1}'
+        + '.qflag:hover,.qflag:focus-visible{opacity:1;border-color:#dc2626}.qflag.inl{position:static;width:auto;height:auto;padding:2px 7px;margin-left:6px;font-size:12px;vertical-align:middle;opacity:.5}'
+        + '@media print{.qflag{display:none!important}#app .flagged{padding-right:revert}}';
+      document.head.appendChild(fcss);
+      const btn = inl => `<button type="button" class="qflag${inl ? ' inl' : ''} noprint" data-qflag aria-label="Report a problem here" title="Something wrong or not working here? Tell us">🚩</button>`;
+      const addFlags = () => {
+        const app = document.getElementById('app'); if (!app) return;
+        app.querySelectorAll(BLOCK).forEach(c => {
+          if (c.classList.contains('flagged') || c.matches(SKIP) || c.closest('.flagbar, .rv-opts')) return;
+          if (c.querySelector(BLOCK) || c.querySelector('[data-rv="flag"], [data-act="backup"], [data-qflag]')) return;   // innermost boxes only; no second report button
+          if ((c.textContent || '').trim().length < 12) return;
+          c.classList.add('flagged'); c.insertAdjacentHTML('beforeend', btn(false));
+        });
+        app.querySelectorAll('table.sumtab tr').forEach(tr => { if (tr.querySelector('th, [data-qflag]')) return; const td = tr.lastElementChild; if (td) td.insertAdjacentHTML('beforeend', btn(true)); });
+        const qf = app.querySelector('form[data-qform]'), qp = qf && qf.previousElementSibling;   // 🙋 typed quiz: next to the word asked
+        if (qp && qp.tagName === 'P' && !qp.querySelector('[data-qflag]')) qp.insertAdjacentHTML('beforeend', btn(true));
+      };
+      document.addEventListener('click', e => {
+        const b = e.target.closest && e.target.closest('[data-qflag]'); if (!b || !window.TELLUS) return;
+        e.preventDefault(); e.stopPropagation();   // a flag inside a flashcard or a link box must not do anything else
+        const box = b.closest('.flagged, tr, p') || b.parentElement, copy = box.cloneNode(true);
+        copy.querySelectorAll('button, textarea, input, select, .esk, [hidden], .ainote, .slidenote, script, style').forEach(x => x.remove());
+        copy.querySelectorAll('div, p, li, td, th, h1, h2, h3, h4, .pill, b').forEach(x => x.append(' '));   // separate parts don't run together
+        const txt = (copy.textContent || '').replace(/\s+/g, ' ').trim(), short = txt.length > 160 ? txt.slice(0, 160) + '…' : txt;
+        const h1 = document.querySelector('#app h1, #app h2'), where = h1 ? h1.textContent.replace(/\s+/g, ' ').trim().slice(0, 60) : '';
+        window.TELLUS('mistake', `🚩 ${where ? where + ' → ' : ''}“${short}”\nWhat is wrong or not working: `);
+      }, true);
+      let queued = false;
+      const queue = () => { if (queued) return; queued = true; requestAnimationFrame(() => { queued = false; addFlags(); }); };
+      const watch = () => { const a = document.getElementById('app'); if (!a) return setTimeout(watch, 300); new MutationObserver(queue).observe(a, { childList: true, subtree: true }); queue(); };
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watch); else watch();
+    }
+  } catch (e) {}
   // 📊 Sunday survey (user 2026-10-25: "a pop up survey percentage at the beginning of each site telling how much benefit they
   // get"; one overall %; then "show pop up screen on sundays starting 11 pm one time only not everytime they open assuring they
   // see either to choose or press anywhere on the screen to skip"): from Sunday 11 pm UAE time, the first time this device opens

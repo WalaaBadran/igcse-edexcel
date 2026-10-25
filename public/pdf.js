@@ -61,8 +61,10 @@
       else if (b.t === 'head') {   // question heading: keep it with its picture (all of it when the picture fits on one page)
         const nx = blocks[bi + 1], im = nx && nx.t === 'img' && !nx.fit ? await getImg(nx.src) : null;
         g.font = `400 17px ${FONT}`;
-        const headH = 50 + (b.sub ? wrap(g, b.sub, CW).length * 22 : 0), ph = im ? imgH(im) : 0;
-        if (im && ph <= BOTTOM - TOP - headH) { if (y + headH + ph > BOTTOM && y > TOP) newPage(); }
+        const headH = 50 + (b.sub ? wrap(g, b.sub, CW).length * 22 : 0);
+        let ph = im ? imgH(im) : 0;
+        if (!im && nx && nx.t === 'steps') { g.font = `400 20px ${FONT}`; ph = 48 + nx.items.flatMap((it, k) => wrap(g, `${k + 1}. ${it}`, CW - 40)).length * 27; }   // a worked solution
+        if (ph && ph <= BOTTOM - TOP - headH) { if (y + headH + ph > BOTTOM && y > TOP) newPage(); }
         else if (im && y > TOP && BOTTOM - y - headH < (BOTTOM - TOP) * 0.6) newPage();   // a very tall question starts high on a page
         else room(200);
         y += 10;
@@ -110,7 +112,7 @@
         g.font = `400 20px ${FONT}`;
         const lines = b.items.flatMap((it, k) => wrap(g, `${k + 1}. ${it}`, CW - 40));
         const h = 34 + lines.length * 27 + 14;
-        room(Math.min(h, 300));
+        if (h <= BOTTOM - TOP) room(h); else room(300);   // a worked solution that fits on one page is kept whole
         g.fillStyle = '#16A34A'; g.fillRect(M, y, 5, Math.min(h, BOTTOM - y));
         g.font = `800 20px ${FONT}`; g.fillStyle = '#111'; g.fillText(b.title, M + 20, y + 6); y += 34;
         g.font = `400 20px ${FONT}`;

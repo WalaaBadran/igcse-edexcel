@@ -150,7 +150,7 @@ ${fixesHTML()}
     <li>Lesson materials, past-paper questions, textbook extracts and other resources <b>belong to their owners</b>. They are the same kinds of materials already shared with the class, and they are gathered here only to help the class <b>revise privately</b>, not for any commercial use. Please don't share them outside the class.</li>
     <li><b>If you own any material on this site and would like it changed or removed</b>, please tell the parent who shared the link, and it will be taken down promptly.</li>
     <li>Progress is saved on your device.<span class="needsync"> <b>Online saving is optional</b> and is turned on by a parent or guardian, who can delete it at any time. Online progress that isn't used for a year is deleted automatically.</span></li>
-    <li>The number of visits is counted (by the site itself and with <b>Cloudflare Web Analytics</b>), with <b>no cookies</b> and nothing that identifies you (no names, no exact location).</li>
+    <li>The number of visits and the study time are counted (by the site itself and with <b>Cloudflare Web Analytics</b>), with <b>no cookies</b> and nothing that identifies you: each device only has a random number, with no names and no exact location.</li>
     ${SHARE ? '' : '<li>One small <b>class pass</b> cookie keeps these sites for the class: a random number, with no names or personal details, not used for counting. A visitor with a show link gets one small cookie that keeps the link to their own device.</li>'}
     ${window.ASK_AI ? '<li>Answers from the <b>🤖 AI helper</b> are written by a computer and <b>can be wrong</b>. Questions and answers are not saved by this site.</li>' : ''}
     <li>Links to other websites are for help only. Those sites have their own rules.</li>
@@ -442,6 +442,9 @@ ${fixesHTML()}
         // 5 s adds the real time since the last check; the last part is added when the page is left), and a page counts only when the
         // address really changes: the 📅 Study plan redraws itself with a pretend page change, so every tap there counted as a page.
         let act = 0, pages = 1, first = true, lastIn = Date.now(), lastTick = Date.now(), lastHash = location.hash, vis = document.visibilityState === 'visible';
+        // 🔁 visits (user 2026-10-25: "how often usually each stay and how often each return to the sites daily"): a new visit starts when
+        // the site is used again after 30 minutes or more away (the last moment of use is kept on this device, shared by its tabs)
+        let visits = 0, lastAct = 0; try { lastAct = +localStorage.getItem('vlast') || 0; } catch (e) {}
         ['pointerdown', 'keydown', 'input', 'scroll', 'touchstart', 'wheel'].forEach(ev => addEventListener(ev, () => { lastIn = Date.now(); }, { passive: true, capture: true }));
         // 📊 which parts are used (user 2026-10-21: "without knowing the persons can i know how they are using it"): page parts and
         // tools, sent as totals without the device number, every minute and when the page is left
@@ -458,9 +461,13 @@ ${fixesHTML()}
         window.SITE_USE = count;
         setInterval(flushUse, 60000); document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushUse(); }); addEventListener('pagehide', flushUse);
         const playing = () => { try { return [...document.querySelectorAll('video, audio')].some(m => !m.paused && !m.ended) || !!(window.speechSynthesis && speechSynthesis.speaking); } catch (e) { return false; } };
-        const tick = () => { const now = Date.now(); if (vis && (now - lastIn < 120000 || playing())) act += Math.min(now - lastTick, 20000); lastTick = now; };
+        const tick = () => { const now = Date.now();
+          if (vis && (now - lastIn < 120000 || playing())) { act += Math.min(now - lastTick, 20000);
+            try { lastAct = Math.max(lastAct, +localStorage.getItem('vlast') || 0); } catch (e) {}
+            if (now - lastAct > 1800000) visits++; lastAct = now; try { localStorage.setItem('vlast', String(now)); } catch (e) {} }
+          lastTick = now; };
         setInterval(tick, 5000);
-        const send = () => { tick(); const s = Math.floor(act / 1000); if (s || pages > (first ? 1 : 0)) { navigator.sendBeacon('/__visit?u=1&d=' + encodeURIComponent(id) + '&t=' + s + '&p=' + pages); act -= s * 1000; pages = 0; first = false; } };
+        const send = () => { tick(); const s = Math.floor(act / 1000); if (s || visits || pages > (first ? 1 : 0)) { navigator.sendBeacon('/__visit?u=1&d=' + encodeURIComponent(id) + '&t=' + s + '&p=' + pages + '&v=' + visits); act -= s * 1000; pages = 0; visits = 0; first = false; } };
         // the first 15 seconds of use are sent at once, so the owner's page soon shows the device is being used (user 2026-10-20: "although
         // he is still using it it gives –"); then every minute while studying, so nothing is lost if the browser is closed suddenly
         setInterval(() => { if (act >= 60000 || (first && act >= 15000)) send(); }, 5000);
@@ -520,7 +527,7 @@ ${fixesHTML()}
   // of the device's own voices (one introduces each part, the other reads it). Notes pages = at least 2 headings, a fair amount
   // of text and no answer boxes. The listening is in English, so on the language sites only the mind map is offered.
   try {
-    const LANGSITE = !!(window.SKCFG || window.VBCFG || /-(french|spanish)\./.test(location.hostname));
+    const LANGSITE = () => !!(window.SKCFG || window.VBCFG || /-(french|spanish)\./.test(location.hostname));   // asked when the bar is drawn: the language set-up comes after help.js
     const ncss = document.createElement('style');
     ncss.textContent = '.nlm{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 12px}.nlm button{border:1px solid var(--line,#e3e7ef);background:var(--card,#fff);color:inherit;border-radius:999px;padding:7px 14px;font:inherit;font-size:14.5px;font-weight:700;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.06)}'
       + '.mm-wrap{position:fixed;inset:0;z-index:9990;background:var(--bg,#f6f7fb);overflow:auto;padding:14px 14px 80px}.mm-top{position:sticky;top:-14px;background:var(--bg,#f6f7fb);display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 0;z-index:1}'
@@ -629,7 +636,7 @@ ${fixesHTML()}
       if (/^#?\/?$/.test(location.hash) || NOTNOTES.test(location.hash) || app.querySelector('textarea, input[type=text], input[type=search], select, input[type=range]')) return;
       if ((app.textContent || '').length < 600 || !outline()) return;
       const bar = document.createElement('div'); bar.className = 'nlm noprint';
-      bar.innerHTML = `<button type="button" data-nlm="map">🧠 Mind map</button>${LANGSITE ? '' : '<button type="button" data-nlm="pod">🎧 Listen to the lesson</button>'}`;
+      bar.innerHTML = `<button type="button" data-nlm="map">🧠 Mind map</button>${LANGSITE() ? '' : '<button type="button" data-nlm="pod">🎧 Listen to the lesson</button>'}`;
       const h1 = app.querySelector('h1'); if (h1 && h1.parentNode) h1.insertAdjacentElement('afterend', bar); else app.insertBefore(bar, app.firstChild);
     };
     document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-nlm]'); if (!b) return; if (b.dataset.nlm === 'map') mindmap(); else podcast(); });

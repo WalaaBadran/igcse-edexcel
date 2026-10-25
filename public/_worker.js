@@ -220,7 +220,7 @@ const VSITES = { 'year9-english': 'Y9 English', 'year8-english': 'Y8 English', '
 let visitsReady = false;
 // ⚡ VSCHEMA: the tables below are made once; after that ONE quick check replaces ~16 table statements each time a server copy
 // starts (user 2026-10-21: show links were slow, about 10 s from the year page to a subject). Change it whenever a table changes.
-const VSCHEMA = 'v14';
+const VSCHEMA = 'v15';
 const VDLK = Object.assign(Object.create(null), { dl: '⬇️ Downloaded', file: '📄 Opened', print: '🖨️ Printed' });   // not 'open': a show link's 'open' row = a go started   // ⬇️ kinds of file use (help.js fileUse)
 const vDlName = f => String(f || '').replace(/[\u0000-\u001f<>"`\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
 async function visitsTable(db) {
@@ -234,6 +234,8 @@ async function visitsTable(db) {
   await db.prepare('CREATE TABLE IF NOT EXISTS vpass (tok TEXT PRIMARY KEY, site TEXT, uses INTEGER, created INTEGER)').run();   // v6: show links
   try { await db.prepare('ALTER TABLE vpass ADD COLUMN devh TEXT').run(); } catch (e) {}   // v9: the one device a show link works on
   try { await db.prepare('ALTER TABLE vdev ADD COLUMN pass INTEGER').run(); } catch (e) {}   // v10: that device had the 🔑 class pass
+  try { await db.prepare('ALTER TABLE vdev ADD COLUMN visits INTEGER').run(); } catch (e) {}   // v15: visits that day (used again after 30+ minutes away)
+  try { await db.prepare('ALTER TABLE vdev ADD COLUMN who TEXT').run(); } catch (e) {}   // v15: the same anonymous device on different days (hash of site + its random number)
   await db.prepare('CREATE TABLE IF NOT EXISTS vguest (tok TEXT PRIMARY KEY, scope TEXT, exp INTEGER)').run();   // v7: guest visits across sites
   try { await db.prepare('ALTER TABLE vguest ADD COLUMN pass TEXT').run(); } catch (e) {}
   await db.prepare('CREATE TABLE IF NOT EXISTS vgdev (g TEXT, site TEXT, devh TEXT, PRIMARY KEY (g, site))').run();   // v9: the device of each guest visit
@@ -349,11 +351,11 @@ async function visitsHook(request, env, ctx) {
       return new Response(null, { status: 204, headers: { 'cache-control': 'no-store' } });
     }
     if (url.searchParams.get('u') === '1') {   // ⏱ time used and pages opened, added to today's row for this device
-      const t = Math.min(Math.max(+url.searchParams.get('t') || 0, 0), 3600), pg = Math.min(Math.max(+url.searchParams.get('p') || 0, 0), 500);
-      if (dev && (t || pg)) {
+      const t = Math.min(Math.max(+url.searchParams.get('t') || 0, 0), 3600), pg = Math.min(Math.max(+url.searchParams.get('p') || 0, 0), 500), vv = Math.min(Math.max(+url.searchParams.get('v') || 0, 0), 20);
+      if (dev && (t || pg || vv)) {
         const job = (async () => { await visitsTable(env.DB);
-          await env.DB.prepare('UPDATE vdev SET secs = COALESCE(secs, 0) + ?1, pages = COALESCE(pages, 0) + ?2 WHERE day = ?3 AND site = ?4 AND dev = ?5')
-            .bind(t, pg, day, site, (await vsha(day + ':' + site + ':' + dev)).slice(0, 32)).run(); })().catch(() => {});
+          await env.DB.prepare('UPDATE vdev SET secs = COALESCE(secs, 0) + ?1, pages = COALESCE(pages, 0) + ?2, visits = COALESCE(visits, 0) + ?6, who = COALESCE(who, ?7) WHERE day = ?3 AND site = ?4 AND dev = ?5')
+            .bind(t, pg, day, site, (await vsha(day + ':' + site + ':' + dev)).slice(0, 32), vv, (await vsha('who:' + site + ':' + dev)).slice(0, 16)).run(); })().catch(() => {});
         if (ctx && ctx.waitUntil) ctx.waitUntil(job); else await job;
       }
       return new Response(null, { status: 204, headers: { 'cache-control': 'no-store' } });
@@ -362,10 +364,10 @@ async function visitsHook(request, env, ctx) {
       await visitsTable(env.DB);
       let isNew = url.searchParams.get('n') === '1' ? 1 : 0;   // n: older pages still cached on phones; no number at all (storage blocked) = not a new device each load
       if (dev) {
-        const r = await env.DB.prepare('INSERT OR IGNORE INTO vdev (day, site, dev, at, kind) VALUES (?1, ?2, ?3, ?4, ?5)').bind(day, site, (await vsha(day + ':' + site + ':' + dev)).slice(0, 32), vTime(), vKind(request.headers.get('user-agent') || '')).run();
+        const r = await env.DB.prepare('INSERT OR IGNORE INTO vdev (day, site, dev, at, kind, who) VALUES (?1, ?2, ?3, ?4, ?5, ?6)').bind(day, site, (await vsha(day + ':' + site + ':' + dev)).slice(0, 32), vTime(), vKind(request.headers.get('user-agent') || ''), (await vsha('who:' + site + ':' + dev)).slice(0, 16)).run();
         isNew = r.meta && r.meta.changes ? 1 : 0;
         if (await cpHas(request, env.DB)) await env.DB.prepare('UPDATE vdev SET pass = 1 WHERE day = ?1 AND site = ?2 AND dev = ?3 AND pass IS NULL').bind(day, site, (await vsha(day + ':' + site + ':' + dev)).slice(0, 32)).run();
-        if (isNew) await env.DB.prepare('DELETE FROM vdev WHERE day < ?1').bind(vDay(3)).run();
+        if (isNew) await env.DB.prepare('DELETE FROM vdev WHERE day < ?1').bind(vDay(15)).run();   // 15 days (was 3): enough to see who comes back
       }
       await env.DB.prepare('INSERT INTO visits (day, site, opens, devices) VALUES (?1, ?2, 1, ?3) ON CONFLICT (day, site) DO UPDATE SET opens = opens + 1, devices = devices + ?3').bind(day, site, isNew).run();
     })().catch(() => {});
@@ -568,7 +570,7 @@ async function visitsHook(request, env, ctx) {
     if (!(await vOwner(k))) return new Response('Not found', { status: 404, headers: { 'x-robots-tag': 'noindex' } });
     const site = url.hostname.split('.')[0];
     const meUrl = VSITES[site] ? `https://${vHost(Object.keys(VSITES)[0])}/__me?k=${encodeURIComponent(k)}&i=0&b=${site}` : '';
-    let rows = [], devs = [];
+    let rows = [], devs = [], wk = [];
     const okDay = d => /^\d{4}-\d{2}-\d{2}$/.test(d || '');
     if (env.DB && okDay(url.searchParams.get('recount'))) {   // owner clean-up: keep only devices counted with a device number
       await visitsTable(env.DB); const d = url.searchParams.get('recount');
@@ -594,7 +596,8 @@ async function visitsHook(request, env, ctx) {
       }
     }
     if (env.DB) { await visitsTable(env.DB); rows = (await env.DB.prepare('SELECT day, site, opens, devices FROM visits ORDER BY day DESC').all()).results || [];
-      devs = (await env.DB.prepare('SELECT day, site, at, kind, secs, pages FROM vdev WHERE day >= ?1 ORDER BY day DESC, at DESC').bind(vDay(1)).all()).results || []; }   // today and yesterday only (user 2026-10-21); older days are in the counts
+      devs = (await env.DB.prepare('SELECT day, site, at, kind, secs, pages FROM vdev WHERE day >= ?1 ORDER BY day DESC, at DESC').bind(vDay(1)).all()).results || [];
+      wk = (await env.DB.prepare('SELECT day, site, who, kind, secs, visits FROM vdev WHERE day >= ?1 AND who IS NOT NULL').bind(vDay(6)).all()).results || []; }   // today and yesterday only (user 2026-10-21); older days are in the counts
     // 💬 messages, 📊 parts used (last 7 days), 👀 show links (v6, 2026-10-21)
     let chats = [], uses = [], passes = [], puse = [], goals = [], dls = [], rates = [];
     if (env.DB) {
@@ -681,6 +684,20 @@ ${isOpen ? (canReply ? `<form method="post" action="/__visits/reply" class="rf">
     // no time yet: still in its first seconds (opened in the last 3 minutes), or opened and left at once (user 2026-10-20: the "–" looked like a fault)
     const nowMin = (([h, m]) => +h * 60 + +m)(vTime().split(':')), fresh = x => x.day === vDay() && x.at && nowMin - (([h, m]) => +h * 60 + +m)(x.at.split(':')) <= 3;
     const mins = x => x.secs ? (x.secs < 60 ? 'under 1 min' : Math.floor(x.secs / 60) + ' min') : `<small>${fresh(x) ? 'starting…' : 'quick look'}</small>`;
+    // ⏱️ how long they stay and how often they come back, per anonymous device, last 7 days (user 2026-10-25)
+    const hab = (() => {
+      const by = new Map();
+      for (const r of wk) { const k = r.site + '|' + r.who, g = by.get(k) || { site: r.site, kind: r.kind, days: new Set(), secs: 0, visits: 0, last: '' };
+        g.days.add(r.day); g.secs += r.secs || 0; g.visits += r.visits || (r.secs ? 1 : 0); if (r.day >= g.last) { g.last = r.day; g.kind = r.kind || g.kind; } by.set(k, g); }
+      return [...by.values()].filter(g => g.secs >= 15).map(g => ({ ...g, nd: g.days.size, per: g.visits ? g.secs / g.visits : g.secs, vpd: g.visits / g.days.size }))
+        .sort((a, b) => a.site < b.site ? -1 : a.site > b.site ? 1 : b.nd - a.nd || b.secs - a.secs);
+    })();
+    const fmtS = s => s < 60 ? 'under 1 min' : Math.round(s / 60) + ' min';
+    const med = a => { const b = [...a].sort((x, y) => x - y); return b.length ? (b.length % 2 ? b[(b.length - 1) / 2] : (b[b.length / 2 - 1] + b[b.length / 2]) / 2) : 0; };
+    const habSites = [...new Set(hab.map(g => g.site))].map(s => { const g = hab.filter(x => x.site === s);
+      return `<tr><td>${VSITES[s] || s}</td><td>${g.length}</td><td>${fmtS(med(g.map(x => x.per)))}</td><td>${(g.reduce((n, x) => n + x.vpd, 0) / g.length).toFixed(1)}</td><td>${g.filter(x => x.nd >= 2).length} of ${g.length}</td></tr>`; }).join('');
+    const habRows = () => { const habN = {}; return hab.map(g => { habN[g.site] = (habN[g.site] || 0) + 1;
+      return `<tr><td>${VSITES[g.site] || g.site}</td><td>#${habN[g.site]} <small>${g.kind || ''}</small></td><td>${g.nd} of 7</td><td>${g.vpd.toFixed(1)}</td><td>${fmtS(g.per)}</td><td>${fmtS(g.secs)}</td><td>${nice(g.last)}</td></tr>`; }).join(''); };
     const days = [...new Set(rows.map(r => r.day))].slice(0, 30), sites = Object.keys(VSITES);
     const cell = (d, s) => { const r = rows.find(x => x.day === d && x.site === s); return r ? `<td><b>${r.devices}</b>${used(d, s) ? `<small> · ${used(d, s)} used</small>` : ''}</td>` : '<td class="z">0</td>'; };   // 0, not "–" (user 2026-10-19)
     const sum = list => list.reduce((a, r) => [a[0] + r.devices, a[1] + r.opens], [0, 0]);
@@ -757,6 +774,10 @@ ${days.length ? days.map(d => `<tr><td>${nice(d)}</td>${sites.map(s => cell(d, s
 <h2 style="margin:20px 0 4px">🆕 Which devices (today and yesterday)</h2><p>Each new device, with the time it first opened that site (UAE) and its type. Use it to tell your own devices from anyone else's. <b>Time used</b> counts only while the student is tapping, typing, scrolling, watching a video or listening; it arrives after 15 seconds of use and then every minute. <b>Pages</b> = screens the student stayed on for 3 seconds or more (since 25 Oct, evening: before that, every quick tap, redraw or Back press counted, so older rows can show too many pages). Robot test browsers are not counted. <small>starting…</small> = opened in the last few minutes, no time sent yet. <small>quick look</small> = opened and left within seconds. This page updates itself every minute.</p>
 <div class="wrap"><table style="min-width:0"><tr><th>Day</th><th>Site</th><th>First opened</th><th>Device</th><th>Time used</th><th>Pages</th></tr>
 ${devs.length ? devs.map(r => `<tr><td>${nice(r.day)}</td><td>${VSITES[r.site] || r.site}</td><td>${r.at || '<small>before times were saved</small>'}</td><td>${r.kind || '<small>not saved</small>'}</td><td>${mins(r)}</td><td>${r.pages || 1}</td></tr>`).join('') : '<tr><td colspan="6">No devices yet.</td></tr>'}</table></div>
+<h2 id="habits" style="margin:20px 0 4px">⏱️ How long they stay, and how often they come back (last 7 days)</h2>
+<p>Each row is one device, with no names. A <b>visit</b> starts when the site is used again after 30 minutes or more away. <b>Usual stay</b> = study time ÷ visits. <b>Visits a day</b> = the average on the days the site was used. Counting started on 25 Oct 2026 (evening), so the first week fills up day by day.</p>
+${hab.length ? `<div class="wrap"><table style="min-width:0"><tr><th>Site</th><th>Devices</th><th>Usual stay per visit</th><th>Visits a day</th><th>Came back on 2+ days</th></tr>${habSites}</table></div>
+<div class="wrap" style="margin-top:10px"><table style="min-width:0"><tr><th>Site</th><th>Device</th><th>Days used</th><th>Visits a day</th><th>Usual stay</th><th>Total this week</th><th>Last used</th></tr>${habRows()}</table></div>` : '<p><small>No visits recorded the new way yet. Check again tomorrow.</small></p>'}
 <p style="margin-top:12px">Open this page once on each phone or laptop you use, and your visits on it stop being counted (numbers up to 19 Oct may include yours). A phone in private mode, or the same phone in a different browser, counts as another device. Cloudflare Web Analytics (dash.cloudflare.com) also has visit numbers; it counts everyone, you too.</p>
 <script>(function () {   // refresh every 30 seconds, but never while you are typing a reply
   var busy = function () { return !!document.querySelector('[data-armed]') || [].some.call(document.querySelectorAll('textarea'), function (t) { return t.value.trim() || t === document.activeElement; }); };

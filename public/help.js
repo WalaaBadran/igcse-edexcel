@@ -447,7 +447,11 @@ ${fixesHTML()}
         // tools, sent as totals without the device number, every minute and when the page is left
         const use = {}, count = p => { use[p] = (use[p] || 0) + 1; };
         count(partNow());
-        addEventListener('hashchange', () => { lastIn = Date.now(); if (location.hash === lastHash) return; lastHash = location.hash; pages++; count(partNow()); });
+        // a page counts once it has been on screen for 3 seconds (user, 25 Oct: "still!!" 76 pages in 5 min: flicking through the
+        // extract buttons or pressing Back many times made a "page" every second)
+        let pageT = 0;
+        addEventListener('hashchange', () => { lastIn = Date.now(); if (location.hash === lastHash) return; const h = lastHash = location.hash;
+          clearTimeout(pageT); pageT = setTimeout(() => { if (location.hash === h && document.visibilityState === 'visible') { pages++; count(partNow()); } }, 3000); });
         const TOOLS = [['.ask-fab', 'tool-ask'], ['.readbtn', 'tool-read'], ['.bigbtn', 'tool-big'], ['.stk-add', 'tool-sticky'], ['.nb-openbtn', 'tool-notes']];
         document.addEventListener('click', e => { const t = e.target.closest && TOOLS.find(([sel]) => e.target.closest(sel)); if (t) count(t[1]); }, true);
         const flushUse = () => { const k = Object.keys(use); if (!k.length) return; navigator.sendBeacon('/__visit?use=' + encodeURIComponent(k.slice(0, 25).map(p => p + ':' + use[p]).join(','))); k.forEach(p => delete use[p]); };

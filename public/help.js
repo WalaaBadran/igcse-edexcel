@@ -356,6 +356,7 @@ ${fixesHTML()}
      (one title or a list)]. STUDY CONTENT ONLY (user, 23 Oct 2026: "make what is new only for academic issues"): new questions,
      units and answers. Never list the site’s tools or features here (that makes the sites easy to copy), and never thank a student for flagging a mistake (user, 23 Oct 2026). */
   const NEWS = [
+    ['2026-10-25', '🧱 NEW in ✍️ Practice questions: how to write the 6-mark and 8-mark answers, part by part. Sentence starters from your lessons, a model answer for each part, and 3 new questions from Lessons 2 and 5.', 'Year 8 History'],
     ['2026-10-24', '🔍 NEW: Zoom in: deep analysis. Learn how to zoom in on a word step by step (the zoom ladder), then practise on 76 zoom-in questions, including your teacher’s own, or choose your own word in any extract. Each answer gets a depth score and one thing to improve.', 'Year 9 English'],
     ['2026-10-24', '📚 Revise only what you were taught: the notes, quiz, ⚡ Revise and test practice now come only from your lesson PowerPoints and class files. Things you did not learn in class have been taken out.', ['Year 8 History', 'Year 9 History', 'Year 8 Geography', 'Year 9 Geography']],
     ['2026-10-24', '🗾 The notes, revision book and study guide were rewritten from your lesson slides and the Japan summary sheet. Past-paper questions from other exam boards were removed, so every question matches your lessons.', 'Year 9 Geography'],
@@ -432,30 +433,34 @@ ${fixesHTML()}
         if (!id) { id = (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36)); localStorage.setItem('vid', id); }
         localStorage.removeItem('vday');
       } catch (e) {}
-      if (!own && !GUEST) {
+      if (!own && !GUEST && !navigator.webdriver) {   // robot / test browsers send nothing
         navigator.sendBeacon('/__visit?d=' + encodeURIComponent(id));
         // ⏱ real use or a quick look? (user 2026-10-19). Seconds count while the page is on screen AND the student is doing
         // something: tapped, typed or scrolled in the last 2 minutes, OR a video / Read aloud is playing (user 2026-10-20: "even
         // staying and using it, it gives – and very few usings"). Sent every minute while open, and when the page is left.
-        let act = 0, pages = 1, first = true, lastIn = Date.now();
+        // 2026-10-25 (user: "some numbers don't look realistic for the staying time"): the seconds are measured exactly (a check every
+        // 5 s adds the real time since the last check; the last part is added when the page is left), and a page counts only when the
+        // address really changes: the 📅 Study plan redraws itself with a pretend page change, so every tap there counted as a page.
+        let act = 0, pages = 1, first = true, lastIn = Date.now(), lastTick = Date.now(), lastHash = location.hash, vis = document.visibilityState === 'visible';
         ['pointerdown', 'keydown', 'input', 'scroll', 'touchstart', 'wheel'].forEach(ev => addEventListener(ev, () => { lastIn = Date.now(); }, { passive: true, capture: true }));
-        addEventListener('hashchange', () => { pages++; lastIn = Date.now(); });
         // 📊 which parts are used (user 2026-10-21: "without knowing the persons can i know how they are using it"): page parts and
         // tools, sent as totals without the device number, every minute and when the page is left
         const use = {}, count = p => { use[p] = (use[p] || 0) + 1; };
-        count(partNow()); addEventListener('hashchange', () => count(partNow()));
+        count(partNow());
+        addEventListener('hashchange', () => { lastIn = Date.now(); if (location.hash === lastHash) return; lastHash = location.hash; pages++; count(partNow()); });
         const TOOLS = [['.ask-fab', 'tool-ask'], ['.readbtn', 'tool-read'], ['.bigbtn', 'tool-big'], ['.stk-add', 'tool-sticky'], ['.nb-openbtn', 'tool-notes']];
         document.addEventListener('click', e => { const t = e.target.closest && TOOLS.find(([sel]) => e.target.closest(sel)); if (t) count(t[1]); }, true);
         const flushUse = () => { const k = Object.keys(use); if (!k.length) return; navigator.sendBeacon('/__visit?use=' + encodeURIComponent(k.slice(0, 25).map(p => p + ':' + use[p]).join(','))); k.forEach(p => delete use[p]); };
         window.SITE_USE = count;
         setInterval(flushUse, 60000); document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushUse(); }); addEventListener('pagehide', flushUse);
         const playing = () => { try { return [...document.querySelectorAll('video, audio')].some(m => !m.paused && !m.ended) || !!(window.speechSynthesis && speechSynthesis.speaking); } catch (e) { return false; } };
-        setInterval(() => { if (document.visibilityState === 'visible' && (Date.now() - lastIn < 120000 || playing())) act += 15; }, 15000);
-        const send = () => { if (act || pages > (first ? 1 : 0)) { navigator.sendBeacon('/__visit?u=1&d=' + encodeURIComponent(id) + '&t=' + act + '&p=' + pages); act = 0; pages = 0; first = false; } };
+        const tick = () => { const now = Date.now(); if (vis && (now - lastIn < 120000 || playing())) act += Math.min(now - lastTick, 20000); lastTick = now; };
+        setInterval(tick, 5000);
+        const send = () => { tick(); const s = Math.floor(act / 1000); if (s || pages > (first ? 1 : 0)) { navigator.sendBeacon('/__visit?u=1&d=' + encodeURIComponent(id) + '&t=' + s + '&p=' + pages); act -= s * 1000; pages = 0; first = false; } };
         // the first 15 seconds of use are sent at once, so the owner's page soon shows the device is being used (user 2026-10-20: "although
         // he is still using it it gives –"); then every minute while studying, so nothing is lost if the browser is closed suddenly
-        setInterval(() => { if (act >= 60 || (first && act >= 15)) send(); }, 15000);
-        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') send(); });
+        setInterval(() => { if (act >= 60000 || (first && act >= 15000)) send(); }, 5000);
+        document.addEventListener('visibilitychange', () => { tick(); vis = document.visibilityState === 'visible'; if (!vis) send(); });
         addEventListener('pagehide', send);
       }
     }
@@ -504,6 +509,130 @@ ${fixesHTML()}
       const watch = () => { const a = document.getElementById('app'); if (!a) return setTimeout(watch, 300); new MutationObserver(queue).observe(a, { childList: true, subtree: true }); queue(); };
       if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watch); else watch();
     }
+  } catch (e) {}
+  // 🧠 Mind map and 🎧 Listen to the lesson on every notes page (user 2026-10-25, after a video about Google NotebookLM: "don't
+  // forget the video i sent you about notebook"; students should stay on the sites). Both are made from what is already on the
+  // page, so they add no new facts: the mind map is the page's headings with their points; the lesson is the page read by two
+  // of the device's own voices (one introduces each part, the other reads it). Notes pages = at least 2 headings, a fair amount
+  // of text and no answer boxes. The listening is in English, so on the language sites only the mind map is offered.
+  try {
+    const LANGSITE = !!(window.SKCFG || window.VBCFG || /-(french|spanish)\./.test(location.hostname));
+    const ncss = document.createElement('style');
+    ncss.textContent = '.nlm{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 12px}.nlm button{border:1px solid var(--line,#e3e7ef);background:var(--card,#fff);color:inherit;border-radius:999px;padding:7px 14px;font:inherit;font-size:14.5px;font-weight:700;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.06)}'
+      + '.mm-wrap{position:fixed;inset:0;z-index:9990;background:var(--bg,#f6f7fb);overflow:auto;padding:14px 14px 80px}.mm-top{position:sticky;top:-14px;background:var(--bg,#f6f7fb);display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 0;z-index:1}'
+      + '.mm-top h2{margin:0 auto 0 0;font-size:19px}.mm-top button{border:1px solid var(--line,#e3e7ef);background:var(--card,#fff);color:inherit;border-radius:999px;padding:6px 12px;font:inherit;font-size:14px;cursor:pointer}'
+      + '.mm ul{list-style:none;margin:0;padding-left:22px;border-left:2px solid var(--line,#d0d5dd)}.mm>ul{border-left:0;padding-left:0}.mm li{margin:6px 0;position:relative}'
+      + '.mm li::before{content:"";position:absolute;left:-22px;top:17px;width:18px;border-top:2px solid var(--line,#d0d5dd)}.mm>ul>li::before{display:none}'
+      + '.mm .node{display:inline-block;border:0;border-radius:12px;padding:7px 12px;font:inherit;text-align:left;cursor:pointer;max-width:100%;line-height:1.35}'
+      + '.mm .n0{background:var(--brand,#4F46E5);color:#fff;font-weight:800;font-size:18px}.mm .n1{background:var(--brand-2,#E0E7FF);color:var(--ink,#1d2433);font-weight:800}.mm .n2{background:#ecfdf5;color:#065f46;font-weight:700}'
+      + '.mm .leaf{display:inline-block;background:var(--card,#fff);border:1px solid var(--line,#e3e7ef);border-radius:10px;padding:6px 10px;font-size:14.5px;line-height:1.4}'
+      + '.mm .node.closed::after{content:" ▸"}.mm .node.open::after{content:" ▾"}'
+      + '@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .mm .n2{background:#064e3b;color:#d1fae5}}'
+      + '.pod{position:fixed;left:8px;right:8px;bottom:calc(70px + env(safe-area-inset-bottom));z-index:9989;max-width:640px;margin:0 auto;background:#111827;color:#fff;border-radius:16px;padding:10px 12px;box-shadow:0 10px 30px rgba(0,0,0,.35);font-size:14px}'
+      + '.pod .row2{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px}.pod button{border:0;border-radius:999px;padding:6px 12px;font:inherit;font-weight:700;cursor:pointer;background:#374151;color:#fff}.pod button.on{background:#4f46e5}'
+      + '.pod .now{font-size:13.5px;opacity:.9;margin-top:4px;max-height:3.9em;overflow:hidden}@media print{.nlm,.mm-wrap,.pod{display:none!important}}';
+    document.head.appendChild(ncss);
+    const nesc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const clean = el => { const c = el.cloneNode(true); c.querySelectorAll('button, .qflag, .say, .esk, [hidden], .noprint, .ainote, .slidenote, script, style').forEach(x => x.remove()); return (c.textContent || '').replace(/\s+/g, ' ').trim(); };
+    const SKIPIN = '.nlm, .flagbar, .newsbar, .funcard, .noprint, nav, .sumhead, .qflag';
+    const NOTNOTES = /^#\/(help|gt|progress|improve|games|write|year|oak|ahead|exam|models|plan|notes|stats|settings)(\/|$)|\/(list|papers)(\/|$)/;
+    const say1 = t => String(t).replace(/[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\uFE0F\u200D\u20E3]/gu, '').replace(/\s+/g, ' ').trim();   // emojis are not read out
+    // the page as a tree: { t, kids: [ { t, kids, leaves } ], leaves }
+    function outline() {
+      const app = document.getElementById('app'); if (!app) return null;
+      const h1 = app.querySelector('h1'), root = { t: h1 ? clean(h1) : document.title, kids: [], leaves: [] };
+      const hs = [...app.querySelectorAll('h2, h3')].filter(h => !h.closest(SKIPIN));
+      if (hs.length < 2) return null;
+      const top = hs.some(h => h.tagName === 'H2') ? 'H2' : 'H3';
+      let cur1 = null, cur = root;
+      const add = (node, el) => {
+        if (el.matches('table')) { el.querySelectorAll('tr').forEach(tr => { const td = [...tr.querySelectorAll('td')]; if (td.length >= 2) node.leaves.push(clean(td[0]) + ': ' + clean(td[td.length - 1])); else if (td.length) node.leaves.push(clean(td[0])); }); return; }
+        if (el.matches('ul, ol')) { el.querySelectorAll(':scope > li').forEach(li => { const t = clean(li); if (t) node.leaves.push(t); }); return; }
+        const t = clean(el); if (t.length > 2) node.leaves.push(t);
+      };
+      // walk the page in order: headings start branches; lists, tables and paragraphs become their points
+      const walker = document.createTreeWalker(app, NodeFilter.SHOW_ELEMENT, { acceptNode: n => n.closest(SKIPIN) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT });
+      for (let el = walker.nextNode(); el; el = walker.nextNode()) {
+        if (el.tagName === 'H1') continue;
+        if (el.tagName === top) { cur1 = { t: clean(el), kids: [], leaves: [] }; root.kids.push(cur1); cur = cur1; continue; }
+        if (/^H[2-4]$/.test(el.tagName)) { const n = { t: clean(el), kids: [], leaves: [] }; (cur1 || root).kids.push(n); cur = n; continue; }
+        if (el.matches('ul, ol, table, p, blockquote') && !el.parentElement.closest('li, td, th, blockquote, ul, ol, table')) add(cur, el);
+      }
+      const prune = n => { n.kids = n.kids.filter(k => (prune(k), k.t && (k.leaves.length || k.kids.length))); return n; };
+      prune(root);
+      return root.kids.length >= 2 ? root : null;
+    }
+    function mindmap() {
+      const o = outline(); if (!o) return;
+      const cut = t => t.length > 140 ? t.slice(0, 140) + '…' : t;
+      const leaves = n => n.leaves.slice(0, 14).map(l => `<li><span class="leaf">${nesc(cut(l))}</span></li>`).join('') + (n.leaves.length > 14 ? `<li><span class="leaf">… ${n.leaves.length - 14} more on the page</span></li>` : '');
+      const branch = (n, lvl) => `<li><button type="button" class="node n${Math.min(lvl, 2)} ${lvl ? 'closed' : 'open'}" aria-expanded="${!lvl}">${nesc(n.t)}</button><ul ${lvl ? 'hidden' : ''}>${n.kids.map(k => branch(k, lvl + 1)).join('')}${leaves(n)}</ul></li>`;
+      const w = document.createElement('div'); w.className = 'mm-wrap'; w.setAttribute('role', 'dialog'); w.setAttribute('aria-label', 'Mind map');
+      w.innerHTML = `<div class="mm-top"><h2>🧠 Mind map</h2><button type="button" data-mm="all">Open all</button><button type="button" data-mm="none">Close all</button><button type="button" data-mm="x">✕ Close</button></div>
+        <p class="small muted" style="margin:0 0 10px">Made from this page. Tap a branch to open it.</p><div class="mm"><ul>${branch(o, 0)}</ul></div>`;
+      const key = e => { if (e.key === 'Escape') { w.remove(); document.removeEventListener('keydown', key); } };
+      w.addEventListener('click', e => {
+        const n = e.target.closest('.node'), b = e.target.closest('[data-mm]');
+        if (n) { const ul = n.nextElementSibling, open = ul.hidden; ul.hidden = !open; n.classList.toggle('open', open); n.classList.toggle('closed', !open); n.setAttribute('aria-expanded', open); }
+        if (b && b.dataset.mm === 'x') { w.remove(); document.removeEventListener('keydown', key); }
+        if (b && (b.dataset.mm === 'all' || b.dataset.mm === 'none')) w.querySelectorAll('.mm .node').forEach((x, i) => { if (!i) return; const op = b.dataset.mm === 'all'; x.nextElementSibling.hidden = !op; x.classList.toggle('open', op); x.classList.toggle('closed', !op); });
+      });
+      document.addEventListener('keydown', key); document.body.appendChild(w);
+    }
+    // 🎧 two voices read the page: A introduces each part, B reads its points
+    let POD = null;
+    const enVoices = () => { try { const v = speechSynthesis.getVoices().filter(x => /^en/i.test(x.lang)); const pref = x => (/en-GB/i.test(x.lang) ? 4 : 0) + (/natural|neural|online|google/i.test(x.name) ? 3 : 0); return v.sort((a, b) => pref(b) - pref(a)); } catch (e) { return []; } };
+    function podScript(o) {
+      const lines = [['A', `Welcome! Today: ${o.t}. We will go through ${o.kids.length} parts: ${o.kids.map(k => k.t).join('; ')}.`, -1]];
+      o.kids.forEach((k, i) => {
+        lines.push(['A', `${i ? 'Next, part' : 'Part'} ${i + 1}: ${k.t}.`, i]);
+        const pts = [...k.leaves, ...k.kids.flatMap(x => [x.t + '.', ...x.leaves])];
+        pts.forEach(t => String(t).split(/([.!?]\s+)/).reduce((acc, bit, j, arr) => { if (j % 2 === 0 && bit.trim()) acc.push(bit.trim() + (arr[j + 1] ? arr[j + 1].trim() : '')); return acc; }, []).forEach(sn => lines.push(['B', sn, i])));
+      });
+      lines.push(['A', `That is the end of ${o.t}. Well done! Now test yourself with a quiz or flashcards.`, o.kids.length - 1]);
+      return lines;
+    }
+    function podDraw() {
+      const P = POD; if (!P) return; let bar = document.querySelector('.pod');
+      if (!bar) { bar = document.createElement('div'); bar.className = 'pod'; bar.setAttribute('role', 'region'); bar.setAttribute('aria-label', 'Listen to the lesson'); document.body.appendChild(bar);
+        bar.addEventListener('click', e => { const b = e.target.closest('[data-pod]'); if (!b || !POD) return; const a = b.dataset.pod;
+          if (a === 'x') podStop(); else if (a === 'pp') { POD.playing ? podPause() : podPlay(); } else if (a === 'next' || a === 'prev') podJump(a === 'next' ? 1 : -1);
+          else if (a === 'slow') { POD.rate = POD.rate < 0.9 ? 1 : 0.8; if (POD.playing) { podPause(); podPlay(); } else podDraw(); } }); }
+      const cur = P.lines[P.i] || P.lines[P.lines.length - 1], part = cur[2] >= 0 ? `Part ${cur[2] + 1} of ${P.o.kids.length}: ${P.o.kids[cur[2]].t}` : 'Introduction';
+      bar.innerHTML = `<div><b>🎧 ${nesc(P.o.t)}</b> <span style="opacity:.75">· ${nesc(part)}</span></div><div class="now">${cur[0] === 'A' ? '🎙️' : '📖'} ${nesc(cur[1])}</div>
+        <div class="row2"><button type="button" data-pod="prev" aria-label="Previous part">⏮</button><button type="button" data-pod="pp" class="on">${P.playing ? '⏸ Pause' : '▶️ Play'}</button><button type="button" data-pod="next" aria-label="Next part">⏭</button>
+        <button type="button" data-pod="slow" class="${P.rate < 0.9 ? 'on' : ''}">🐢 Slower</button><span style="flex:1"></span><button type="button" data-pod="x">✕ Close</button></div>
+        <div style="font-size:12px;opacity:.7;margin-top:4px">Read from this page by your device's voices. Nothing new is added.</div>`;
+    }
+    function podSpeak() {
+      const P = POD; if (!P || !P.playing) return;
+      if (P.i >= P.lines.length) { P.playing = false; P.done = true; P.i = P.lines.length - 1; podDraw(); return; }
+      const who = P.lines[P.i][0], text = say1(P.lines[P.i][1]), vs = enVoices(), u = new SpeechSynthesisUtterance(text);
+      const v = vs.length ? vs[who === 'A' ? 0 : Math.min(1, vs.length - 1)] : null; if (v) { u.voice = v; u.lang = v.lang; } else u.lang = 'en-GB';
+      u.rate = P.rate; u.pitch = vs.length > 1 ? 1 : (who === 'A' ? 1.1 : 0.85);
+      const token = P.token = (P.token || 0) + 1;
+      u.onend = () => { if (POD !== P || token !== P.token || !P.playing) return; P.i++; podDraw(); setTimeout(podSpeak, who === 'A' ? 350 : 200); };
+      u.onerror = u.onend; speechSynthesis.speak(u); podDraw();
+    }
+    function podPlay() { if (!POD) return; try { speechSynthesis.cancel(); } catch (e) {} if (POD.done) { POD.done = false; POD.i = 0; } POD.playing = true; podSpeak(); }   // ▶️ after the end starts again
+    function podPause() { if (!POD) return; POD.playing = false; POD.token = (POD.token || 0) + 1; try { speechSynthesis.cancel(); } catch (e) {} podDraw(); }
+    function podStop() { if (POD) POD.token = (POD.token || 0) + 1; POD = null; try { speechSynthesis.cancel(); } catch (e) {} const b = document.querySelector('.pod'); if (b) b.remove(); }
+    function podJump(d) { const P = POD; if (!P) return; P.done = false; const curPart = (P.lines[P.i] || [0, 0, -1])[2], target = Math.max(-1, Math.min(P.o.kids.length - 1, curPart + d));
+      const k = P.lines.findIndex(l => l[2] === target && (target < 0 || l[0] === 'A')); P.i = k < 0 ? 0 : k; if (P.playing) podPlay(); else podDraw(); }
+    function podcast() { const o = outline(); if (!o || !('speechSynthesis' in window)) return; podStop(); POD = { o, lines: podScript(o), i: 0, rate: 1, playing: false, token: 0 }; podPlay(); }
+    const addBar = () => {
+      const app = document.getElementById('app'); if (!app || app.querySelector('.nlm')) return;
+      if (/^#?\/?$/.test(location.hash) || NOTNOTES.test(location.hash) || app.querySelector('textarea, input[type=text], input[type=search], select, input[type=range]')) return;
+      if ((app.textContent || '').length < 600 || !outline()) return;
+      const bar = document.createElement('div'); bar.className = 'nlm noprint';
+      bar.innerHTML = `<button type="button" data-nlm="map">🧠 Mind map</button>${LANGSITE ? '' : '<button type="button" data-nlm="pod">🎧 Listen to the lesson</button>'}`;
+      const h1 = app.querySelector('h1'); if (h1 && h1.parentNode) h1.insertAdjacentElement('afterend', bar); else app.insertBefore(bar, app.firstChild);
+    };
+    document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-nlm]'); if (!b) return; if (b.dataset.nlm === 'map') mindmap(); else podcast(); });
+    addEventListener('hashchange', () => { if (POD && !POD.playing) podStop(); });
+    let nq = false; const nqueue = () => { if (nq) return; nq = true; setTimeout(() => { nq = false; addBar(); }, 120); };
+    const nwatch = () => { const a = document.getElementById('app'); if (!a) return setTimeout(nwatch, 300); new MutationObserver(nqueue).observe(a, { childList: true }); nqueue(); };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', nwatch); else nwatch();
   } catch (e) {}
   // 📊 Sunday survey (user 2026-10-25: "a pop up survey percentage at the beginning of each site telling how much benefit they
   // get"; one overall %; then "show pop up screen on sundays starting 11 pm one time only not everytime they open assuring they

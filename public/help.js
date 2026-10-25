@@ -467,15 +467,18 @@ ${fixesHTML()}
   // anywhere outside the box) = not asked again until the next Sunday 11 pm; left open and the page closed = asked again next time.
   // Only on devices that first opened the site by the Thursday before; never on the owner's devices or show links. The pop-up
   // never says "week"/"weekly" (user: "don't write weekly"). The server keeps totals per site and round only: owner page 📊 Survey %.
+  // Launch round (user 2026-10-25: "no launch it now"): until the first Sunday round (1 Nov, 11 pm) every device is asked once,
+  // straight away, with no "used since Thursday" wait; then the Sunday rounds go on as above.
   try {
     const own = (() => { try { return localStorage.getItem('vown') === '1'; } catch (e) { return true; } })();
     if (/\.workers\.dev$/.test(location.hostname) && !GUEST && !own && navigator.sendBeacon) {
       const now = new Date(Date.now() + 4 * 3600e3), today = now.toISOString().slice(0, 10);   // UAE time, in the UTC fields
       const st = new Date(now.getTime() - 23 * 3600e3); st.setUTCDate(st.getUTCDate() - st.getUTCDay());
-      const wk = st.toISOString().slice(0, 10);   // the Sunday whose 11 pm (UAE) started this survey round
+      let wk = st.toISOString().slice(0, 10);   // the Sunday whose 11 pm (UAE) started this survey round
+      const launch = wk < '2026-11-01'; if (launch) wk = 'launch';
       let first = today, done = wk;
       try { first = localStorage.getItem('rate-first') || ''; if (!first) { first = today; localStorage.setItem('rate-first', today); } done = localStorage.getItem('rate-wk') || ''; } catch (e) {}
-      if (done !== wk && Date.parse(wk) - Date.parse(first) >= 3 * 864e5) {   // used since Thursday or before: a new device waits for the next Sunday
+      if (done !== wk && (launch || Date.parse(wk) - Date.parse(first) >= 3 * 864e5)) {   // used since Thursday or before: a new device waits for the next Sunday
         const hs = location.hostname.split('.')[0].split('-'), sub = hs[1] || '';
         const name = 'Year ' + ((hs[0].match(/\d+/) || [''])[0]) + ' ' + (sub === 'math' ? 'Maths' : sub.charAt(0).toUpperCase() + sub.slice(1));
         let tries = 0;

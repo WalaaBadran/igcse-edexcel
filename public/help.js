@@ -500,7 +500,10 @@ ${fixesHTML()}
             + '.rate-range{width:100%;height:30px;margin:0;accent-color:var(--brand,#4F46E5);cursor:pointer}.rate-range.untouched{accent-color:#98a2b3;opacity:.75}'
             + '.rate-ends{display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted,#5b6475);margin:2px 2px 14px}'
             + '.rate-go{border:0;border-radius:12px;padding:11px 24px;font:inherit;font-weight:800;background:var(--brand,#4F46E5);color:#fff;cursor:pointer}.rate-go:disabled{opacity:.45;cursor:default}'
-            + '.rate-later{display:block;margin:12px auto 0;border:0;background:none;color:var(--muted,#5b6475);font:inherit;font-size:13.5px;cursor:pointer}';
+            + '.rate-later{display:block;margin:12px auto 0;border:0;background:none;color:var(--muted,#5b6475);font:inherit;font-size:13.5px;cursor:pointer}'
+            + '.rate-opts{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:4px 0 10px}.rate-opt{border:1px solid var(--line,#d0d5dd);background:var(--card,#fff);color:inherit;border-radius:999px;padding:7px 12px;font:inherit;font-size:14px;cursor:pointer}'
+            + '.rate-opt[aria-pressed="true"]{background:var(--brand,#4F46E5);border-color:var(--brand,#4F46E5);color:#fff}'
+            + '.rate-more{width:100%;box-sizing:border-box;font:inherit;font-size:16px;padding:8px 10px;border-radius:10px;border:1px solid var(--line,#d0d5dd);background:var(--card,#fff);color:inherit;margin:0 0 10px;resize:vertical}';
           document.head.appendChild(css);
           const w = document.createElement('div'); w.className = 'rate-wrap';
           w.setAttribute('role', 'dialog'); w.setAttribute('aria-modal', 'true'); w.setAttribute('aria-labelledby', 'rate-t');
@@ -518,18 +521,43 @@ ${fixesHTML()}
           const rg = w.querySelector('.rate-range'), val = w.querySelector('.rate-val');
           const moved = () => { pick = rg.value; rg.classList.remove('untouched'); val.classList.remove('wait'); val.textContent = pick + '%'; w.querySelector('.rate-go').disabled = false; };
           rg.addEventListener('input', moved); rg.addEventListener('change', moved); rg.addEventListener('click', moved);   // a tap on the middle = 50%
+          const card = w.querySelector('.rate-card');
+          const thanks = (h, p, ms) => { card.innerHTML = '<div style="font-size:34px" aria-hidden="true">💛</div><h2>' + h + '</h2>' + (p ? '<p>' + p + '</p>' : ''); setTimeout(close, ms); };
           w.querySelector('.rate-go').onclick = () => {
             if (pick === null) return;
             mark(); if (!preview) navigator.sendBeacon('/__rate?p=' + pick);
-            w.querySelector('.rate-card').innerHTML = '<div style="font-size:34px" aria-hidden="true">💛</div><h2>Thank you for telling us!</h2>';
-            setTimeout(close, 1800);
+            if (+pick >= 100) { thanks('Thank you for telling us!', '', 1800); return; }
+            // less than 100%: what would make it 100%? (user 2026-10-25: "when a student chooses less than 100% can we add anything
+            // asking him to interact to improve to be fully satisfied"). Tap any ideas and / or type; it arrives in 📣 Tell us,
+            // so the owner reads it in 💬 Messages and can reply. Optional: tap outside, Esc or the skip line to leave.
+            const OPTS = ['📝 More practice questions', '💡 Clearer explanations', '🎯 More on my test topics', '📱 Easier to use on my phone', '🚩 Fix mistakes', '🎮 More fun'];
+            card.innerHTML = '<div style="font-size:30px" aria-hidden="true">💛</div><h2 id="rate-t">Thank you! What would make it 100%?</h2>'
+              + '<p>Tap anything that would help (more than one is fine).</p>' + (preview ? '<p><b>👀 Preview: nothing is sent.</b></p>' : '')
+              + '<div class="rate-opts" role="group" aria-label="What would make it 100%">' + OPTS.map(o => '<button type="button" class="rate-opt" aria-pressed="false">' + o + '</button>').join('') + '</div>'
+              + '<textarea class="rate-more" rows="2" maxlength="500" placeholder="Anything else? (optional, no names please)" aria-label="Anything else?"></textarea>'
+              + '<button type="button" class="rate-go" disabled>📨 Send</button><button type="button" class="rate-later">or tap anywhere outside this box to skip</button>';
+            const go = card.querySelector('.rate-go'), more = card.querySelector('.rate-more');
+            const ready = () => { go.disabled = !(card.querySelector('.rate-opt[aria-pressed="true"]') || more.value.trim()); };
+            card.querySelectorAll('.rate-opt').forEach(b => { b.onclick = () => { b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') !== 'true'); ready(); }; });
+            more.addEventListener('input', ready);
+            card.querySelector('.rate-later').onclick = close;
+            go.onclick = () => {
+              const ideas = [...card.querySelectorAll('.rate-opt[aria-pressed="true"]')].map(b => b.textContent), typed = more.value.trim();
+              if (!ideas.length && !typed) return;
+              const text = 'Survey: ' + pick + '% · to make it 100%: ' + (ideas.join(', ') || '(nothing ticked)') + (typed ? '\nWhy: ' + typed : '');
+              if (!preview) fetch('/api/chat', { method: 'POST', headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ t: chatId(true), kind: 'improve', text, page: 'Survey pop-up', url: location.pathname + location.hash }) }).catch(() => {});
+              if (window.SITE_USE && !preview) SITE_USE('tool-msg');
+              thanks('Thank you!', 'The parent who made this site will read it. If there is a reply, the 📣 Tell us button blinks.', 3200);
+            };
+            setTimeout(() => { const f = card.querySelector('.rate-opt'); if (f) f.focus({ preventScroll: true }); }, 50);
           };
           w.querySelector('.rate-later').onclick = close;
           // a tap on the dark screen around the box = skip (only when the tap starts there too, so letting go of the slider
           // outside the box doesn't close it)
           let downOut = false;
           w.addEventListener('pointerdown', e => { downOut = e.target === w; });
-          w.addEventListener('click', e => { if (e.target === w && downOut && w.querySelector('.rate-range')) close(); });
+          w.addEventListener('click', e => { if (e.target === w && downOut) close(); });
           document.addEventListener('keydown', key);
           document.body.appendChild(w);
           rg.focus({ preventScroll: true });

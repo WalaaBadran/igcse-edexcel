@@ -469,16 +469,19 @@ ${fixesHTML()}
   // never says "week"/"weekly" (user: "don't write weekly"). The server keeps totals per site and round only: owner page 📊 Survey %.
   // Launch round (user 2026-10-25: "no launch it now"): until the first Sunday round (1 Nov, 11 pm) every device is asked once,
   // straight away, with no "used since Thursday" wait; then the Sunday rounds go on as above.
+  // 👀 Preview for the owner (user 2026-10-25: "pop up percent not showing" — it never shows on the owner's own devices):
+  // <site>/?rate=preview shows it at once on any device; nothing is sent or remembered.
   try {
     const own = (() => { try { return localStorage.getItem('vown') === '1'; } catch (e) { return true; } })();
-    if (/\.workers\.dev$/.test(location.hostname) && !GUEST && !own && navigator.sendBeacon) {
+    const preview = /[?&]rate=preview(?:&|$)/.test(location.search);
+    if ((/\.workers\.dev$/.test(location.hostname) && !GUEST && !own && navigator.sendBeacon) || preview) {
       const now = new Date(Date.now() + 4 * 3600e3), today = now.toISOString().slice(0, 10);   // UAE time, in the UTC fields
       const st = new Date(now.getTime() - 23 * 3600e3); st.setUTCDate(st.getUTCDate() - st.getUTCDay());
       let wk = st.toISOString().slice(0, 10);   // the Sunday whose 11 pm (UAE) started this survey round
       const launch = wk < '2026-11-01'; if (launch) wk = 'launch';
       let first = today, done = wk;
       try { first = localStorage.getItem('rate-first') || ''; if (!first) { first = today; localStorage.setItem('rate-first', today); } done = localStorage.getItem('rate-wk') || ''; } catch (e) {}
-      if (done !== wk && (launch || Date.parse(wk) - Date.parse(first) >= 3 * 864e5)) {   // used since Thursday or before: a new device waits for the next Sunday
+      if (preview || (done !== wk && (launch || Date.parse(wk) - Date.parse(first) >= 3 * 864e5))) {   // used since Thursday or before: a new device waits for the next Sunday
         const hs = location.hostname.split('.')[0].split('-'), sub = hs[1] || '';
         const name = 'Year ' + ((hs[0].match(/\d+/) || [''])[0]) + ' ' + (sub === 'math' ? 'Maths' : sub.charAt(0).toUpperCase() + sub.slice(1));
         let tries = 0;
@@ -488,7 +491,7 @@ ${fixesHTML()}
           const seen = el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);   // hidden panels don't count
           const busy = [...document.querySelectorAll('#splash, .ms-wrap, .pl-splash, .upd-bar, .rate-wrap, [role="dialog"], [aria-modal="true"]')].some(seen)
             || /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName || '') || ae.isContentEditable;
-          if (busy || document.visibilityState !== 'visible') { if (++tries < 40) setTimeout(show, 15000); return; }
+          if (busy || document.visibilityState !== 'visible') { if (++tries < 200) setTimeout(show, 3000); return; }   // look again every 3 s (up to 10 min)
           const css = document.createElement('style');
           css.textContent = '.rate-wrap{position:fixed;inset:0;z-index:9998;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:16px}'
             + '.rate-card{background:var(--card,#fff);color:var(--ink,#1d2433);max-width:380px;width:100%;border-radius:20px;padding:20px 18px 16px;box-shadow:0 20px 50px rgba(0,0,0,.35);text-align:center;font-family:inherit}'
@@ -502,13 +505,13 @@ ${fixesHTML()}
           const w = document.createElement('div'); w.className = 'rate-wrap';
           w.setAttribute('role', 'dialog'); w.setAttribute('aria-modal', 'true'); w.setAttribute('aria-labelledby', 'rate-t');
           w.innerHTML = '<div class="rate-card"><div style="font-size:30px" aria-hidden="true">📊</div><h2 id="rate-t">How much does ' + name + ' help you with your studies?</h2>'
-            + '<p>No names. Your answer helps make this site better.</p>'
+            + '<p>No names. Your answer helps make this site better.</p>' + (preview ? '<p><b>👀 Preview: your answer is not saved.</b></p>' : '')
             + '<div class="rate-val wait" aria-live="polite">👉 Slide to choose</div>'
             + '<input type="range" class="rate-range untouched" min="0" max="100" step="10" value="50" aria-label="How much it helps, in percent">'
             + '<div class="rate-ends"><span>😕 0% not at all</span><span>a lot 100% 🤩</span></div>'
             + '<button type="button" class="rate-go" disabled>Send</button><button type="button" class="rate-later">or tap anywhere outside this box to skip</button></div>';
           let pick = null;
-          const mark = () => { try { localStorage.setItem('rate-wk', wk); } catch (e) {} };
+          const mark = () => { if (preview) return; try { localStorage.setItem('rate-wk', wk); } catch (e) {} };
           const close = () => { mark(); w.remove(); css.remove(); document.removeEventListener('keydown', key); };
           const key = e => { if (e.key === 'Escape') close(); };
           // the slider starts grey with no number shown; Send works only after the student moves it (user 2026-10-25: "make in sliding")
@@ -517,7 +520,7 @@ ${fixesHTML()}
           rg.addEventListener('input', moved); rg.addEventListener('change', moved); rg.addEventListener('click', moved);   // a tap on the middle = 50%
           w.querySelector('.rate-go').onclick = () => {
             if (pick === null) return;
-            mark(); navigator.sendBeacon('/__rate?p=' + pick);
+            mark(); if (!preview) navigator.sendBeacon('/__rate?p=' + pick);
             w.querySelector('.rate-card').innerHTML = '<div style="font-size:34px" aria-hidden="true">💛</div><h2>Thank you for telling us!</h2>';
             setTimeout(close, 1800);
           };
@@ -531,7 +534,7 @@ ${fixesHTML()}
           document.body.appendChild(w);
           rg.focus({ preventScroll: true });
         };
-        setTimeout(show, 4000);
+        setTimeout(show, preview ? 1500 : 4000);
       }
     }
   } catch (e) {}

@@ -478,7 +478,8 @@ ${fixesHTML()}
       const now = new Date(Date.now() + 4 * 3600e3), today = now.toISOString().slice(0, 10);   // UAE time, in the UTC fields
       const st = new Date(now.getTime() - 23 * 3600e3); st.setUTCDate(st.getUTCDate() - st.getUTCDay());
       let wk = st.toISOString().slice(0, 10);   // the Sunday whose 11 pm (UAE) started this survey round
-      const launch = wk < '2026-11-01'; if (launch) wk = 'launch';
+      // restarted 25 Oct (user: "reset counting percentage and start showing the pop again"): 'launch2', so everyone is asked again
+      const launch = wk < '2026-11-01'; if (launch) wk = 'launch2';
       let first = today, done = wk;
       try { first = localStorage.getItem('rate-first') || ''; if (!first) { first = today; localStorage.setItem('rate-first', today); } done = localStorage.getItem('rate-wk') || ''; } catch (e) {}
       if (preview || (done !== wk && (launch || Date.parse(wk) - Date.parse(first) >= 3 * 864e5))) {   // used since Thursday or before: a new device waits for the next Sunday

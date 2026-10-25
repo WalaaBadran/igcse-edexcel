@@ -579,6 +579,20 @@ async function visitsHook(request, env, ctx) {
       await env.DB.prepare('DELETE FROM visits WHERE site = ?1 AND day = ?2').bind(st, d).run();
       await env.DB.prepare('DELETE FROM vdev WHERE site = ?1 AND day = ?2').bind(st, d).run();
     }
+    // owner clean-up (user 2026-10-25: "امسح صفوف الروبوت"): remove one site's device rows of one kind at the given times, and take them off
+    // that day's device count; nothing happens unless exactly n rows match (&rmdev=SITE&day=DAY&kind=…&at=HH:MM,HH:MM&n=N)
+    if (env.DB && VSITES[url.searchParams.get('rmdev')] && okDay(url.searchParams.get('day')) && /^\d{1,3}$/.test(url.searchParams.get('n') || '')) {
+      await visitsTable(env.DB); const st = url.searchParams.get('rmdev'), d = url.searchParams.get('day'), kind = url.searchParams.get('kind') || '', n = +url.searchParams.get('n');
+      const ats = (url.searchParams.get('at') || '').split(',').filter(a => /^\d{2}:\d{2}$/.test(a)).slice(0, 20);
+      if (ats.length && n > 0) {
+        const where = `site = ?1 AND day = ?2 AND kind = ?3 AND at IN (${ats.map((_, i) => '?' + (i + 4)).join(', ')})`;
+        const c = await env.DB.prepare('SELECT COUNT(*) AS c FROM vdev WHERE ' + where).bind(st, d, kind, ...ats).first();
+        if (c && c.c === n) {
+          await env.DB.prepare('DELETE FROM vdev WHERE ' + where).bind(st, d, kind, ...ats).run();
+          await env.DB.prepare('UPDATE visits SET devices = MAX(devices - ?1, 0) WHERE site = ?2 AND day = ?3').bind(n, st, d).run();
+        }
+      }
+    }
     if (env.DB) { await visitsTable(env.DB); rows = (await env.DB.prepare('SELECT day, site, opens, devices FROM visits ORDER BY day DESC').all()).results || [];
       devs = (await env.DB.prepare('SELECT day, site, at, kind, secs, pages FROM vdev WHERE day >= ?1 ORDER BY day DESC, at DESC').bind(vDay(1)).all()).results || []; }   // today and yesterday only (user 2026-10-21); older days are in the counts
     // 💬 messages, 📊 parts used (last 7 days), 👀 show links (v6, 2026-10-21)

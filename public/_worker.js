@@ -216,7 +216,7 @@ async function flagApi(request, env, url) {   // the older 🚩 button (pages st
 const VISITS_HASHES = ['a3c878a98dd187788a3e71c30df3c20b4bf227e80e6a39854b1aa84334970441', 'd80298765ede9f05e36f4b9416ecc97f3b20a7168fc3d010bf9510ecc696c836'];
 const VSITES = { 'year9-english': 'Y9 English', 'year8-english': 'Y8 English', 'year9-science': 'Y9 Science', 'year8-science': 'Y8 Science',
   'year9-geography': 'Y9 Geography', 'year8-geography': 'Y8 Geography', 'year9-history': 'Y9 History', 'year8-history': 'Y8 History',
-  'year9-math': 'Y9 Maths', 'year8-math': 'Y8 Maths', 'igcse-edexcel': 'IGCSE Maths (shared)' };
+  'year9-math': 'Y9 Maths', 'year8-math': 'Y8 Maths', 'year8-spanish': 'Y8 Spanish', 'year9-french': 'Y9 French', 'igcse-edexcel': 'IGCSE Maths (shared)' };
 let visitsReady = false;
 // ⚡ VSCHEMA: the tables below are made once; after that ONE quick check replaces ~16 table statements each time a server copy
 // starts (user 2026-10-21: show links were slow, about 10 s from the year page to a subject). Change it whenever a table changes.
@@ -780,7 +780,7 @@ ${devs.length ? devs.map(r => `<tr><td>${nice(r.day)}</td><td>${VSITES[r.site] |
 //      gives the pass with one tap.
 // Show-link visits (/__show/, /__guest/, /__g/) keep their own one-device rules. The IGCSE copy stays open to everyone.
 const CP_RING = ['year9', 'year8', 'year9-english', 'year9-science', 'year9-math', 'year9-geography', 'year9-history',
-  'year8-english', 'year8-science', 'year8-math', 'year8-geography', 'year8-history'].map(s => s + '.deirarevise.workers.dev');
+  'year8-english', 'year8-science', 'year8-math', 'year8-geography', 'year8-history', 'year8-spanish', 'year9-french'].map(s => s + '.deirarevise.workers.dev');
 const CP_HUBS = { 'year9.deirarevise.workers.dev': 'year9', 'year8.deirarevise.workers.dev': 'year8' };
 const CP_GRACE = 14 * 864e5;
 let cpReady = false, cpKey = null, cpLockAt = 0, cpLockRead = 0;

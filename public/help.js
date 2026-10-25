@@ -460,20 +460,22 @@ ${fixesHTML()}
       }
     }
   } catch (e) {}
-  // 📊 weekly survey (user 2026-10-25: "a pop up survey percentage at the beginning of each site telling how much benefit they
-  // get"; one overall %, "at the end of each week like sundays morning"): from Sunday 6:00 UAE time, the first time this device
-  // opens this site that week, ONE question: how much does this site help you? (0–100%; nothing is chosen until tapped).
-  // Sent or skipped = not asked again until next Sunday. Only on devices that first opened the site 3+ days ago; never on the
-  // owner's devices or show links. The server keeps totals per site and week only (no device number): owner page 📊 Weekly %.
+  // 📊 Sunday survey (user 2026-10-25: "a pop up survey percentage at the beginning of each site telling how much benefit they
+  // get"; one overall %; then "show pop up screen on sundays starting 11 pm one time only not everytime they open assuring they
+  // see either to choose or press anywhere on the screen to skip"): from Sunday 11 pm UAE time, the first time this device opens
+  // this site, ONE question: how much does this site help you? (0–100%; nothing is chosen until tapped). Chosen or skipped (a tap
+  // anywhere outside the box) = not asked again until the next Sunday 11 pm; left open and the page closed = asked again next time.
+  // Only on devices that first opened the site by the Thursday before; never on the owner's devices or show links. The pop-up
+  // never says "week"/"weekly" (user: "don't write weekly"). The server keeps totals per site and round only: owner page 📊 Survey %.
   try {
     const own = (() => { try { return localStorage.getItem('vown') === '1'; } catch (e) { return true; } })();
     if (/\.workers\.dev$/.test(location.hostname) && !GUEST && !own && navigator.sendBeacon) {
       const now = new Date(Date.now() + 4 * 3600e3), today = now.toISOString().slice(0, 10);   // UAE time, in the UTC fields
-      const st = new Date(now.getTime() - 6 * 3600e3); st.setUTCDate(st.getUTCDate() - st.getUTCDay());
-      const wk = st.toISOString().slice(0, 10);   // the Sunday this survey week started (6:00 UAE)
+      const st = new Date(now.getTime() - 23 * 3600e3); st.setUTCDate(st.getUTCDate() - st.getUTCDay());
+      const wk = st.toISOString().slice(0, 10);   // the Sunday whose 11 pm (UAE) started this survey round
       let first = today, done = wk;
       try { first = localStorage.getItem('rate-first') || ''; if (!first) { first = today; localStorage.setItem('rate-first', today); } done = localStorage.getItem('rate-wk') || ''; } catch (e) {}
-      if (done !== wk && Date.parse(today) - Date.parse(first) >= 3 * 864e5) {
+      if (done !== wk && Date.parse(wk) - Date.parse(first) >= 3 * 864e5) {   // used since Thursday or before: a new device waits for the next Sunday
         const hs = location.hostname.split('.')[0].split('-'), sub = hs[1] || '';
         const name = 'Year ' + ((hs[0].match(/\d+/) || [''])[0]) + ' ' + (sub === 'math' ? 'Maths' : sub.charAt(0).toUpperCase() + sub.slice(1));
         let tries = 0;
@@ -492,7 +494,7 @@ ${fixesHTML()}
             + '.rate-range{width:100%;height:30px;margin:0;accent-color:var(--brand,#4F46E5);cursor:pointer}.rate-range.untouched{accent-color:#98a2b3;opacity:.75}'
             + '.rate-ends{display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted,#5b6475);margin:2px 2px 14px}'
             + '.rate-go{border:0;border-radius:12px;padding:11px 24px;font:inherit;font-weight:800;background:var(--brand,#4F46E5);color:#fff;cursor:pointer}.rate-go:disabled{opacity:.45;cursor:default}'
-            + '.rate-later{border:0;background:none;color:var(--muted,#5b6475);font:inherit;font-size:14px;text-decoration:underline;cursor:pointer;margin-left:12px}';
+            + '.rate-later{display:block;margin:12px auto 0;border:0;background:none;color:var(--muted,#5b6475);font:inherit;font-size:13.5px;cursor:pointer}';
           document.head.appendChild(css);
           const w = document.createElement('div'); w.className = 'rate-wrap';
           w.setAttribute('role', 'dialog'); w.setAttribute('aria-modal', 'true'); w.setAttribute('aria-labelledby', 'rate-t');
@@ -501,7 +503,7 @@ ${fixesHTML()}
             + '<div class="rate-val wait" aria-live="polite">👉 Slide to choose</div>'
             + '<input type="range" class="rate-range untouched" min="0" max="100" step="10" value="50" aria-label="How much it helps, in percent">'
             + '<div class="rate-ends"><span>😕 0% not at all</span><span>a lot 100% 🤩</span></div>'
-            + '<button type="button" class="rate-go" disabled>Send</button><button type="button" class="rate-later">Skip this week</button></div>';
+            + '<button type="button" class="rate-go" disabled>Send</button><button type="button" class="rate-later">or tap anywhere outside this box to skip</button></div>';
           let pick = null;
           const mark = () => { try { localStorage.setItem('rate-wk', wk); } catch (e) {} };
           const close = () => { mark(); w.remove(); css.remove(); document.removeEventListener('keydown', key); };
@@ -513,10 +515,15 @@ ${fixesHTML()}
           w.querySelector('.rate-go').onclick = () => {
             if (pick === null) return;
             mark(); navigator.sendBeacon('/__rate?p=' + pick);
-            w.querySelector('.rate-card').innerHTML = '<div style="font-size:34px" aria-hidden="true">💛</div><h2>Thank you for telling us!</h2><p>See you next week.</p>';
+            w.querySelector('.rate-card').innerHTML = '<div style="font-size:34px" aria-hidden="true">💛</div><h2>Thank you for telling us!</h2>';
             setTimeout(close, 1800);
           };
           w.querySelector('.rate-later').onclick = close;
+          // a tap on the dark screen around the box = skip (only when the tap starts there too, so letting go of the slider
+          // outside the box doesn't close it)
+          let downOut = false;
+          w.addEventListener('pointerdown', e => { downOut = e.target === w; });
+          w.addEventListener('click', e => { if (e.target === w && downOut && w.querySelector('.rate-range')) close(); });
           document.addEventListener('keydown', key);
           document.body.appendChild(w);
           rg.focus({ preventScroll: true });

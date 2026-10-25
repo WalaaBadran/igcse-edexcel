@@ -247,7 +247,7 @@ async function visitsTable(db) {
   // v13 (user 2026-10-23: "if someone downloaded let me know"): ⬇️ files downloaded, opened or printed, totals per day (60 days)
   await db.prepare('CREATE TABLE IF NOT EXISTS vdl (day TEXT, site TEXT, kind TEXT, item TEXT, part TEXT, n INTEGER, last INTEGER, PRIMARY KEY (day, site, kind, item))').run();
   // v14 (user 2026-10-25: "a pop up survey percentage … how much benefit they get"): 📊 the weekly answers, how many students
-  // chose each % (0, 10 … 100) on each site in each survey week (the week starts Sunday 6:00 UAE); totals only
+  // chose each % (0, 10 … 100) on each site in each survey round (a round starts Sunday 11 pm UAE; was 6:00 until 25 Oct); totals only
   await db.prepare('CREATE TABLE IF NOT EXISTS vrate (site TEXT, week TEXT, p INTEGER, n INTEGER, PRIMARY KEY (site, week, p))').run();
   await db.prepare('CREATE TABLE IF NOT EXISTS vkeys (name TEXT PRIMARY KEY, val TEXT)').run();
   await db.prepare("INSERT OR REPLACE INTO vkeys (name, val) VALUES ('schema-visits', ?1)").bind(VSCHEMA).run();
@@ -308,8 +308,8 @@ const vTime = () => new Date(Date.now() + 4 * 3600e3).toISOString().slice(11, 16
 const vMine = request => /(?:^|;\s*)vown=1(?:;|$)/.test(request.headers.get('cookie') || '');
 const vDay = (back = 0) => new Date(Date.now() + 4 * 3600e3 - back * 864e5).toISOString().slice(0, 10);   // UAE date
 const vWeek = (back = 0) => { const d = new Date(Date.now() + 4 * 3600e3 - back * 7 * 864e5); d.setUTCDate(d.getUTCDate() - (d.getUTCDay() + 6) % 7); return d.toISOString().slice(0, 10); };   // the Monday of the UAE week
-// 📊 the survey week (help.js asks from Sunday 6:00 UAE): the date of the Sunday it started, back = weeks before this one
-const vSun = (back = 0) => { const d = new Date(Date.now() + 4 * 3600e3 - 6 * 3600e3 - back * 7 * 864e5); d.setUTCDate(d.getUTCDate() - d.getUTCDay()); return d.toISOString().slice(0, 10); };
+// 📊 the survey round (help.js asks from Sunday 11 pm UAE): the date of the Sunday it started, back = rounds before this one
+const vSun = (back = 0) => { const d = new Date(Date.now() + 4 * 3600e3 - 23 * 3600e3 - back * 7 * 864e5); d.setUTCDate(d.getUTCDate() - d.getUTCDay()); return d.toISOString().slice(0, 10); };
 // 👥 this week's class goal: 10% more than last week's answers, rounded to 50 (at least 200; 300 in the first week)
 const vGoalOf = last => Math.max(200, last ? Math.ceil(last * 1.1 / 50) * 50 : 300);
 async function visitsHook(request, env, ctx) {
@@ -383,8 +383,8 @@ async function visitsHook(request, env, ctx) {
     } catch (e) {}
     return new Response(JSON.stringify({ week: vWeek(), n, last, goal: vGoalOf(last) }), { headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
   }
-  // 📊 the weekly "how much does this site help you?" pop-up (help.js): one answer, 0–100 in steps of 10, added to this survey
-  // week's totals for the site; no device number, nothing that identifies anyone; the owner's devices are not counted
+  // 📊 the Sunday "how much does this site help you?" pop-up (help.js): one answer, 0–100 in steps of 10, added to this survey
+  // round's totals for the site; no device number, nothing that identifies anyone; the owner's devices are not counted
   if (url.pathname === '/__rate' && request.method === 'POST') {
     const site = url.hostname.split('.')[0], ps = url.searchParams.get('p') || '';
     if (env.DB && VSITES[site] && /^(100|[1-9]?0)$/.test(ps) && request.headers.get('sec-fetch-site') !== 'cross-site' && !vMine(request)) {
@@ -668,13 +668,14 @@ ${isOpen ? (canReply ? `<form method="post" action="/__visits/reply" class="rf">
     // ⬇️ files downloaded, opened or printed (students; show-link visits are in 👀 Show links); today's count also in the menu
     const dlToday = dls.filter(x => x.day === vDay()).reduce((a, x) => a + x.n, 0);
     const dlHTML = dls.length ? `<div class="wrap"><table style="min-width:0"><tr><th>Last time</th><th>Site</th><th style="text-align:left">What</th><th>Times</th></tr>${dls.map(x => `<tr><td>${when(x.last)}</td><td>${esc(VSITES[x.site] || x.site)}</td><td class="l">${VDLK[x.kind] || '📄 Opened'}: <b>${esc(x.item)}</b>${x.part ? ` <small>· ${esc(uname(x.part))}</small>` : ''}</td><td><b>${x.n}</b>${x.day !== vDay() ? ` <small>on ${nice(x.day)}</small>` : ''}</td></tr>`).join('')}</table></div>` : '<p>Nothing yet: counting started on 23 Oct 2026.</p>';
-    // 📊 weekly survey: each site's average % this survey week and the 3 before (weeks start Sunday 6:00 UAE)
-    const rWeeks = [0, 1, 2, 3].map(vSun);
+    // 📊 Sunday survey: each site's average % this round and the 3 before (rounds start Sunday 11 pm UAE)
+    // the first real round starts Sun 1 Nov 2026, 11 pm (no device can answer earlier); anything filed before it was a test
+    const rWeeks = [0, 1, 2, 3].map(vSun).filter(w => w >= '2026-11-01');
     const rAvg = (s, w) => { const l = rates.filter(r => r.site === s && r.week === w), n = l.reduce((a, r) => a + r.n, 0); return n ? [Math.round(l.reduce((a, r) => a + r.p * r.n, 0) / n), n] : null; };
     const rCell = a => a ? `<td><b style="color:${a[0] >= 70 ? 'var(--brand)' : a[0] >= 40 ? '#b45309' : '#b42318'}">${a[0]}%</b><br><small>${a[1]} answer${a[1] === 1 ? '' : 's'}</small></td>` : '<td class="z">–</td>';
-    const rSites = Object.keys(VSITES).filter(s => rates.some(r => r.site === s));
-    const rateHTML = rSites.length ? `<div class="wrap"><table style="min-width:0"><tr><th>Site</th>${rWeeks.map((w, i) => `<th>${['This week', 'Last week', '2 weeks ago', '3 weeks ago'][i]}<br><small>from ${nice(w)}</small></th>`).join('')}</tr>${rSites.map(s => `<tr><td>${esc(VSITES[s])}</td>${rWeeks.map(w => rCell(rAvg(s, w))).join('')}</tr>`).join('')}</table></div>`
-      : '<p>No answers yet: the pop-up first appears on Sunday morning.</p>';
+    const rSites = Object.keys(VSITES).filter(s => rates.some(r => r.site === s && rWeeks.includes(r.week)));
+    const rateHTML = rSites.length ? `<div class="wrap"><table style="min-width:0"><tr><th>Site</th>${rWeeks.map((w, i) => `<th>${i ? '' : 'Now: '}from ${nice(w)}<br><small>11 pm</small></th>`).join('')}</tr>${rSites.map(s => `<tr><td>${esc(VSITES[s])}</td>${rWeeks.map(w => rCell(rAvg(s, w))).join('')}</tr>`).join('')}</table></div>`
+      : '<p>No answers yet: the pop-up first appears on Sunday 1 Nov from 11 pm (UAE time).</p>';
     const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${waiting ? `(${waiting}) ` : ''}Visits</title>
 <style>:root{--bg:#f4f6fb;--card:#fff;--ink:#1d2433;--muted:#5b6475;--line:#e4e7ec;--brand:#0E8F6E}
 @media (prefers-color-scheme:dark){:root{--bg:#12151c;--card:#1c212b;--ink:#e8ecf3;--muted:#9aa3b2;--line:#2c3340;--brand:#34D3A3}}
@@ -693,7 +694,7 @@ select{font:inherit;padding:7px;border-radius:8px}.newlink{background:var(--card
 td.l{text-align:left;white-space:normal}</style></head><body>
 <h1>📈 Visits${waiting ? ` <small style="color:var(--brand)">· 💬 ${waiting} new</small>` : ''}</h1>
 <p style="margin:0 0 8px" class="small">🔄 Updated at <b>${new Date(Date.now() + 4 * 3600e3).toISOString().slice(11, 19)}</b> (UAE time). This page refreshes by itself every 30 seconds while it is on screen, and as soon as you come back to it. <a href="#" id="rnow">↻ Refresh now</a></p>
-<div class="nav"><a href="#msgs">💬 Messages${waiting ? ` (${waiting} new)` : ''}</a><a href="#rate">📊 Weekly %</a><a href="#fb">❤️ Opinions &amp; ideas</a><a href="#use">📊 What they use</a><a href="#dl">⬇️ Downloads${dlToday ? ` (${dlToday} today)` : ''}</a><a href="#show">👀 Show links</a><a href="#visits">📈 Visits</a><a href="/__visits/papers?k=${encodeURIComponent(k)}">📚 Maths papers</a><a href="https://year9.deirarevise.workers.dev/" target="_blank" rel="noopener">🏠 Year 9 hub</a><a href="https://year8.deirarevise.workers.dev/" target="_blank" rel="noopener">🏠 Year 8 hub</a></div><p>Each box: how many <b>devices</b> opened that site that day (UAE time). A device counts once a day per site, however many times it opens it. <small>"· 3 used"</small> = how many of them really used it (2 minutes or more of tapping, typing, scrolling, watching a video or listening). Day total = all the sites' boxes for that day added up; a student who used 3 sites counts 3 there. Total row = each site's days added up. Counting started on 19 Oct 2026. Only you have this link: please keep it private.</p>
+<div class="nav"><a href="#msgs">💬 Messages${waiting ? ` (${waiting} new)` : ''}</a><a href="#rate">📊 Survey %</a><a href="#fb">❤️ Opinions &amp; ideas</a><a href="#use">📊 What they use</a><a href="#dl">⬇️ Downloads${dlToday ? ` (${dlToday} today)` : ''}</a><a href="#show">👀 Show links</a><a href="#visits">📈 Visits</a><a href="/__visits/papers?k=${encodeURIComponent(k)}">📚 Maths papers</a><a href="https://year9.deirarevise.workers.dev/" target="_blank" rel="noopener">🏠 Year 9 hub</a><a href="https://year8.deirarevise.workers.dev/" target="_blank" rel="noopener">🏠 Year 8 hub</a></div><p>Each box: how many <b>devices</b> opened that site that day (UAE time). A device counts once a day per site, however many times it opens it. <small>"· 3 used"</small> = how many of them really used it (2 minutes or more of tapping, typing, scrolling, watching a video or listening). Day total = all the sites' boxes for that day added up; a student who used 3 sites counts 3 there. Total row = each site's days added up. Counting started on 19 Oct 2026. Only you have this link: please keep it private.</p>
 <p id="me" style="color:var(--brand);font-weight:600"></p>
 <script>(function () { var own = false; try { own = localStorage.getItem('vown') === '1'; } catch (e) {}
   var me = document.getElementById('me'), go = ${JSON.stringify(meUrl)}, done = /[?&]done=1/.test(location.search);
@@ -704,7 +705,7 @@ td.l{text-align:left;white-space:normal}</style></head><body>
 <h2 id="msgs">💬 Messages from students</h2><p>Sent with the 💬 Your say button on every page: 🚩 mistakes, ➕ things to add, ❤️ what they think, 📅 how often they use it and 🛠️ ideas to make it better. No names. Your reply appears on the phone or computer that sent the message, the next time the student opens that site. New messages appear here within 30 seconds.</p>
 ${openT.length ? openT.map(m => thread(m, true)).join('') : '<p><b>No open messages.</b></p>'}
 ${doneT.length ? `<details><summary>Finished conversations (${doneT.length})</summary>${doneT.map(m => thread(m, false)).join('')}</details>` : ''}
-<h2 id="rate">📊 How much each site helps (weekly survey)</h2><p>From Sunday morning, the first time a student opens a site that week, a pop-up asks <b>“How much does this site help you with your studies?”</b> (0–100%). Each box: the average answer and how many students answered. One answer per device per site per week; no names and no device numbers. Your own devices and show links are never asked.</p>
+<h2 id="rate">📊 How much each site helps (Sunday survey)</h2><p>Every Sunday from 11 pm (UAE time), the next time a student opens a site, a pop-up asks <b>“How much does this site help you with your studies?”</b> (0–100%). It shows once: the student slides and sends, or taps anywhere outside the box to skip; then it waits for the next Sunday 11 pm. Each box: the average answer and how many students answered. No names and no device numbers. Your own devices and show links are never asked.</p>
 ${rateHTML}
 <h2 id="fb">❤️ What students think and suggest, by site</h2><p>Every message by site, newest first. <b style="color:#b42318">Open</b> = still to do (it is also at the top of Messages, where you reply or tap ✅ Solved); <b>finished</b> = done. Test messages from building the site are not counted.</p>
 ${rateRows.length ? `<p><b>👍 / 👎 Was this page helpful?</b> One-tap answers at the bottom of each page (last 7 days), by part of the site:</p><div class="wrap" style="margin-bottom:12px"><table style="min-width:0"><tr><th>Site</th><th style="text-align:left">Part: 👍 helpful · 👎 not helpful</th></tr>${rateRows.map(([s, l]) => `<tr><td>${esc(VSITES[s])}</td><td class="l">${l.map(([p, [u, d]]) => `${esc(uname(p))}: 👍 <b>${u}</b> · 👎 <b${d > u ? ' style="color:#b42318"' : ''}>${d}</b>`).join(' &nbsp;|&nbsp; ')}</td></tr>`).join('')}</table></div>` : ''}

@@ -508,7 +508,9 @@ ${fixesHTML()}
           const w = document.createElement('div'); w.className = 'rate-wrap';
           w.setAttribute('role', 'dialog'); w.setAttribute('aria-modal', 'true'); w.setAttribute('aria-labelledby', 'rate-t');
           w.innerHTML = '<div class="rate-card"><div style="font-size:30px" aria-hidden="true">📊</div><h2 id="rate-t">How much does ' + name + ' help you with your studies?</h2>'
-            + '<p>No names. Your answer helps make this site better.</p>' + (preview ? '<p><b>👀 Preview: your answer is not saved.</b></p>' : '')
+            // user 2026-10-25: "add a message before selecting percent that it's ok not to like it 100% but you can help us to be more useful for you"
+            + '<p style="color:var(--ink,#1d2433);font-size:15px">💬 It’s OK if it isn’t 100% for you! Please be honest: your answer helps us make this site more useful for you.</p>'
+            + '<p>No names.</p>' + (preview ?'<p><b>👀 Preview: your answer is not saved.</b></p>' : '')
             + '<div class="rate-val wait" aria-live="polite">👉 Slide to choose</div>'
             + '<input type="range" class="rate-range untouched" min="0" max="100" step="10" value="50" aria-label="How much it helps, in percent">'
             + '<div class="rate-ends"><span>😕 0% not at all</span><span>a lot 100% 🤩</span></div>'

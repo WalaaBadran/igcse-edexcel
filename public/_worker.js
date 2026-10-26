@@ -220,7 +220,7 @@ const VSITES = { 'year9-english': 'Y9 English', 'year8-english': 'Y8 English', '
 let visitsReady = false;
 // ⚡ VSCHEMA: the tables below are made once; after that ONE quick check replaces ~16 table statements each time a server copy
 // starts (user 2026-10-21: show links were slow, about 10 s from the year page to a subject). Change it whenever a table changes.
-const VSCHEMA = 'v15';
+const VSCHEMA = 'v16';
 const VDLK = Object.assign(Object.create(null), { dl: '⬇️ Downloaded', file: '📄 Opened', print: '🖨️ Printed' });   // not 'open': a show link's 'open' row = a go started   // ⬇️ kinds of file use (help.js fileUse)
 const vDlName = f => String(f || '').replace(/[\u0000-\u001f<>"`\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
 async function visitsTable(db) {
@@ -251,6 +251,9 @@ async function visitsTable(db) {
   // v14 (user 2026-10-25: "a pop up survey percentage … how much benefit they get"): 📊 the weekly answers, how many students
   // chose each % (0, 10 … 100) on each site in each survey round (a round starts Sunday 11 pm UAE; was 6:00 until 25 Oct); totals only
   await db.prepare('CREATE TABLE IF NOT EXISTS vrate (site TEXT, week TEXT, p INTEGER, n INTEGER, PRIMARY KEY (site, week, p))').run();
+  // v16 (user 2026-10-26: "the student survey result … put each day separate"): the same answers by the UAE day they were sent
+  // (recorded from 26 Oct 2026; earlier first-round answers have no day)
+  await db.prepare('CREATE TABLE IF NOT EXISTS vrate_day (site TEXT, day TEXT, week TEXT, p INTEGER, n INTEGER, PRIMARY KEY (site, day, week, p))').run();
   await db.prepare('CREATE TABLE IF NOT EXISTS vkeys (name TEXT PRIMARY KEY, val TEXT)').run();
   await db.prepare("INSERT OR REPLACE INTO vkeys (name, val) VALUES ('schema-visits', ?1)").bind(VSCHEMA).run();
   visitsReady = true;
@@ -397,7 +400,9 @@ async function visitsHook(request, env, ctx) {
   if (url.pathname === '/__rate' && request.method === 'POST') {
     const site = url.hostname.split('.')[0], ps = url.searchParams.get('p') || '';
     if (env.DB && VSITES[site] && /^(100|[1-9]?0)$/.test(ps) && request.headers.get('sec-fetch-site') !== 'cross-site' && !vMine(request)) {
-      const job = (async () => { await visitsTable(env.DB); await env.DB.prepare('INSERT INTO vrate (site, week, p, n) VALUES (?1, ?2, ?3, 1) ON CONFLICT (site, week, p) DO UPDATE SET n = n + 1').bind(site, vRound(), +ps).run(); })().catch(() => {});
+      const job = (async () => { await visitsTable(env.DB); const w = vRound(); await env.DB.batch([
+        env.DB.prepare('INSERT INTO vrate (site, week, p, n) VALUES (?1, ?2, ?3, 1) ON CONFLICT (site, week, p) DO UPDATE SET n = n + 1').bind(site, w, +ps),
+        env.DB.prepare('INSERT INTO vrate_day (site, day, week, p, n) VALUES (?1, ?2, ?3, ?4, 1) ON CONFLICT (site, day, week, p) DO UPDATE SET n = n + 1').bind(site, vDay(), w, +ps)]); })().catch(() => {});
       if (ctx && ctx.waitUntil) ctx.waitUntil(job); else await job;
     }
     return new Response(null, { status: 204, headers: { 'cache-control': 'no-store' } });
@@ -599,7 +604,7 @@ async function visitsHook(request, env, ctx) {
       devs = (await env.DB.prepare('SELECT day, site, at, kind, secs, pages FROM vdev WHERE day >= ?1 ORDER BY day DESC, at DESC').bind(vDay(1)).all()).results || [];
       wk = (await env.DB.prepare('SELECT day, site, who, kind, secs, visits FROM vdev WHERE day >= ?1 AND who IS NOT NULL').bind(vDay(6)).all()).results || []; }   // today and yesterday only (user 2026-10-21); older days are in the counts
     // 💬 messages, 📊 parts used (last 7 days), 👀 show links (v6, 2026-10-21)
-    let chats = [], uses = [], passes = [], puse = [], goals = [], dls = [], rates = [];
+    let chats = [], uses = [], passes = [], puse = [], goals = [], dls = [], rates = [], rdays = [], l2days = [];
     if (env.DB) {
       await chatSetup(env.DB);
       chats = (await env.DB.prepare('SELECT id, thread, site, sender, kind, page, url, msg, created, done FROM chat ORDER BY id DESC LIMIT 2000').all()).results || [];
@@ -609,6 +614,8 @@ async function visitsHook(request, env, ctx) {
       try { await visitsTable(env.DB); goals = (await env.DB.prepare('SELECT site, week, n FROM vgoal WHERE week >= ?1').bind(vWeek(1)).all()).results || []; } catch (e) {}   // 👥 class goal
       try { dls = (await env.DB.prepare('SELECT day, site, kind, item, part, n, last FROM vdl WHERE day >= ?1 ORDER BY last DESC LIMIT 300').bind(vDay(6)).all()).results || []; } catch (e) {}   // ⬇️ files
       try { rates = (await env.DB.prepare('SELECT site, week, p, n FROM vrate WHERE week >= ?1').bind(vSun(3)).all()).results || []; } catch (e) {}   // 📊 weekly survey
+      try { rdays = (await env.DB.prepare('SELECT site, day, p, n FROM vrate_day WHERE day >= ?1').bind(vDay(27)).all()).results || [];   // 📊 … by day (4 weeks)
+        l2days = (await env.DB.prepare("SELECT site, p, SUM(n) AS n FROM vrate_day WHERE week = 'launch2' GROUP BY site, p").all()).results || []; } catch (e) {}
     }
     // 🔑 class pass: the lock, the class links, and how many recent devices already have the pass
     let cpi = null, cpT = { n: 0, p: 0 }, cp3 = { n: 0, p: 0 };
@@ -714,6 +721,15 @@ ${isOpen ? (canReply ? `<form method="post" action="/__visits/reply" class="rf">
     const rSites = Object.keys(VSITES).filter(s => rates.some(r => r.site === s && rWeeks.includes(r.week)));
     const rateHTML = rSites.length ? `<div class="wrap"><table style="min-width:0"><tr><th>Site</th>${rWeeks.map((w, i) => `<th>${i ? '' : 'Now: '}${w === 'launch2' ? 'first round<br><small>restarted 25 Oct – 1 Nov</small>' : `from ${nice(w)}<br><small>11 pm</small>`}</th>`).join('')}</tr>${rSites.map(s => `<tr><td>${esc(VSITES[s])}</td>${rWeeks.map(w => rCell(rAvg(s, w))).join('')}</tr>`).join('')}</table></div>`
       : '<p>No answers yet: the first round started on 25 Oct; after it, the pop-up comes every Sunday from 11 pm (UAE time).</p>';
+    // the same answers by the UAE day they were sent, newest first (user 2026-10-26: "put each day separate"); first-round answers
+    // sent before days were recorded (25–26 Oct) are one "Earlier" column = the round's answers minus those with a day
+    const dAvg = l => { const n = l.reduce((a, r) => a + r.n, 0); return n ? [Math.round(l.reduce((a, r) => a + r.p * r.n, 0) / n), n] : null; };
+    const early = s => rates.filter(r => r.week === 'launch2' && (!s || r.site === s))
+      .map(r => ({ p: r.p, n: r.n - l2days.filter(x => x.site === r.site && x.p === r.p).reduce((a, x) => a + x.n, 0) })).filter(r => r.n > 0);
+    const dDays = [...new Set(rdays.map(r => r.day))].sort().reverse(), hasEarly = early().length > 0;
+    const dSites = Object.keys(VSITES).filter(s => rdays.some(r => r.site === s) || early(s).length);
+    const dayHTML = dSites.length ? `<div class="wrap"><table style="min-width:0"><tr><th>Site</th>${dDays.map(d => `<th>${d === vDay() ? 'Today' : nice(d)}</th>`).join('')}${hasEarly ? '<th>Earlier<br><small>25–26 Oct</small></th>' : ''}</tr>${dSites.map(s => `<tr><td>${esc(VSITES[s])}</td>${dDays.map(d => rCell(dAvg(rdays.filter(r => r.site === s && r.day === d)))).join('')}${hasEarly ? rCell(dAvg(early(s))) : ''}</tr>`).join('')}<tr class="t"><td><b>All sites</b></td>${dDays.map(d => rCell(dAvg(rdays.filter(r => r.day === d)))).join('')}${hasEarly ? rCell(dAvg(early())) : ''}</tr></table></div>`
+      : '<p>No answers yet.</p>';
     const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${waiting ? `(${waiting}) ` : ''}Visits</title>
 <style>:root{--bg:#f4f6fb;--card:#fff;--ink:#1d2433;--muted:#5b6475;--line:#e4e7ec;--brand:#0E8F6E}
 @media (prefers-color-scheme:dark){:root{--bg:#12151c;--card:#1c212b;--ink:#e8ecf3;--muted:#9aa3b2;--line:#2c3340;--brand:#34D3A3}}
@@ -744,6 +760,9 @@ td.l{text-align:left;white-space:normal}</style></head><body>
 ${openT.length ? openT.map(m => thread(m, true)).join('') : '<p><b>No open messages.</b></p>'}
 ${doneT.length ? `<details><summary>Finished conversations (${doneT.length})</summary>${doneT.map(m => thread(m, false)).join('')}</details>` : ''}
 <h2 id="rate">📊 How much each site helps (Sunday survey)</h2><p>First round: restarted on 25 Oct, everyone is asked again (earlier answers are not counted). Then every Sunday from 11 pm (UAE time), the next time a student opens a site, a pop-up asks <b>“How much does this site help you with your studies?”</b> (0–100%). It shows once: the student slides and sends, or taps anywhere outside the box to skip; then it waits for the next Sunday 11 pm. Each box: the average answer and how many students answered. No names and no device numbers. A student who chooses less than 100% is asked <b>“What would make it 100%?”</b>: their ideas come to <a href="#msgs">💬 Messages</a>, where you can reply. Your own devices and show links are never asked. <b>👀 To see it yourself:</b> <a href="https://year9-history.deirarevise.workers.dev/?rate=preview" target="_blank" rel="noopener">open a preview</a> (any site works with <code>?rate=preview</code> at the end; nothing is saved).</p>
+<h3 style="margin:12px 0 4px">📅 Each day</h3><p>The answers sent on each day (UAE time), newest first. Days are recorded from 26 Oct; answers sent before that are in “Earlier”.</p>
+${dayHTML}
+<h3 style="margin:16px 0 4px">🔁 Each survey round</h3>
 ${rateHTML}
 <h2 id="fb">❤️ What students think and suggest, by site</h2><p>Every message by site, newest first. <b style="color:#b42318">Open</b> = still to do (it is also at the top of Messages, where you reply or tap ✅ Solved); <b>finished</b> = done. Test messages from building the site are not counted.</p>
 ${rateRows.length ? `<p><b>👍 / 👎 Was this page helpful?</b> One-tap answers at the bottom of each page (last 7 days), by part of the site:</p><div class="wrap" style="margin-bottom:12px"><table style="min-width:0"><tr><th>Site</th><th style="text-align:left">Part: 👍 helpful · 👎 not helpful</th></tr>${rateRows.map(([s, l]) => `<tr><td>${esc(VSITES[s])}</td><td class="l">${l.map(([p, [u, d]]) => `${esc(uname(p))}: 👍 <b>${u}</b> · 👎 <b${d > u ? ' style="color:#b42318"' : ''}>${d}</b>`).join(' &nbsp;|&nbsp; ')}</td></tr>`).join('')}</table></div>` : ''}

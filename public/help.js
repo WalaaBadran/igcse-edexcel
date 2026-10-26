@@ -1115,3 +1115,35 @@ html:not(.sync-on) .needsync { display: none !important; }`;
     a.prepend(d);
   }, 1500));
 })();
+
+/* 🎬 The how-to video opens big (user 26 Oct 2026: "same for help videos the ones how to use" — like the History story
+   videos: tap to watch it bigger, and full screen if wanted). When a small tutorial.mp4 starts playing (Home card or Help
+   page), it opens in a big player in the middle of the screen, from the same moment; ✕ Close or tapping outside goes back. */
+(function () {
+  const css = document.createElement('style');
+  css.textContent = '.vbox{position:fixed;inset:0;z-index:1400;background:rgba(10,14,20,.82);display:grid;place-items:center;padding:16px}'
+    + '.vbox-in{width:min(560px,100%);text-align:center}.vbox video{display:block;width:100%;max-height:78vh;margin:0 auto;border-radius:12px;background:#000}'
+    + '.vbox-bar{display:flex;gap:8px;justify-content:center;margin-top:10px}.vbox-bar button{border:0;border-radius:999px;padding:9px 16px;font:inherit;font-weight:800;cursor:pointer;background:#fff;color:#111}';
+  document.head.appendChild(css);
+  function openBig(v) {
+    const src = v.currentSrc || v.src, at = v.currentTime || 0;
+    const box = document.createElement('div'); box.className = 'vbox'; box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', 'How-to video');
+    box.innerHTML = '<div class="vbox-in"><video controls playsinline></video><div class="vbox-bar"><button type="button" data-vbfull>⛶ Full screen</button><button type="button" data-vbclose>✕ Close</button></div></div>';
+    const big = box.querySelector('video'); big.src = src; if (v.poster) big.poster = v.poster;
+    document.body.appendChild(box);
+    big.addEventListener('loadedmetadata', () => { try { big.currentTime = at; } catch (e) {} }, { once: true });
+    const p = big.play(); if (p && p.catch) p.catch(() => {});
+    const close = () => { try { v.currentTime = big.currentTime; } catch (e) {} big.pause(); box.remove(); };
+    box.addEventListener('click', ev => {
+      if (ev.target === box || ev.target.closest('[data-vbclose]')) close();
+      else if (ev.target.closest('[data-vbfull]')) { try { const f = big.requestFullscreen || big.webkitRequestFullscreen || big.webkitEnterFullscreen; const r = f && f.call(big); if (r && r.catch) r.catch(() => {}); } catch (e) {} }
+    });
+    document.addEventListener('keydown', function esc(ev) { if (ev.key === 'Escape' && document.body.contains(box)) { close(); document.removeEventListener('keydown', esc); } });
+  }
+  document.addEventListener('play', e => {
+    const v = e.target;
+    if (!(v instanceof HTMLVideoElement) || v.closest('.vbox') || !/tutorial\.mp4/.test(v.currentSrc || v.src || '')) return;
+    if (v.getBoundingClientRect().width >= 480) return;   // already big
+    v.pause(); openBig(v);
+  }, true);
+})();

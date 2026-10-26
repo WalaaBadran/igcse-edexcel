@@ -338,6 +338,7 @@ ${fixesHTML()}
     if (speaking) return stopSpeak();
     const app = document.getElementById('app'), copy = app.cloneNode(true);
     copy.querySelectorAll('.flagbar, .newsbar, .stk-box, .termbar, script, style, [hidden]').forEach(n => n.remove());
+    copy.querySelectorAll('details').forEach(d => { d.open = true; });   // closed boxes (📘 book sections) are read too
     document.body.appendChild(copy); copy.style.cssText = 'position:absolute;left:-9999px;top:0;width:600px';
     const text = copy.innerText.replace(/\s+/g, ' ').trim(); copy.remove();
     const parts = text.match(/[^.!?]{1,220}[.!?]*|[^.!?]+/g) || [];

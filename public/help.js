@@ -356,6 +356,7 @@ ${fixesHTML()}
      (one title or a list)]. STUDY CONTENT ONLY (user, 23 Oct 2026: "make what is new only for academic issues"): new questions,
      units and answers. Never list the site’s tools or features here (that makes the sites easy to copy), and never thank a student for flagging a mistake (user, 23 Oct 2026). */
   const NEWS = [
+    ['2026-10-26', '🎬 NEW: every lesson as a short story video (3 to 4 minutes): two voices, pictures from your slides, a timeline, a quick quiz and a recap. Everything in them comes from your lesson slides and class booklets. Open a lesson, then 📘 Read.', ['Year 8 History', 'Year 9 History']],
     ['2026-10-25', '🧱 NEW in ✍️ Practice questions: how to write the 6-mark and 8-mark answers, part by part. Sentence starters from your lessons, a model answer for each part, and 3 new questions from Lessons 2 and 5.', 'Year 8 History'],
     ['2026-10-24', '🔍 NEW: Zoom in: deep analysis. Learn how to zoom in on a word step by step (the zoom ladder), then practise on 76 zoom-in questions, including your teacher’s own, or choose your own word in any extract. Each answer gets a depth score and one thing to improve.', 'Year 9 English'],
     ['2026-10-24', '📚 Revise only what you were taught: the notes, quiz, ⚡ Revise and test practice now come only from your lesson PowerPoints and class files. Things you did not learn in class have been taken out.', ['Year 8 History', 'Year 9 History', 'Year 8 Geography', 'Year 9 Geography']],

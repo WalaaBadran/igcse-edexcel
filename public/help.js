@@ -485,6 +485,7 @@ ${fixesHTML()}
      (one title or a list)]. STUDY CONTENT ONLY (user, 23 Oct 2026: "make what is new only for academic issues"): new questions,
      units and answers. Never list the site’s tools or features here (that makes the sites easy to copy), and never thank a student for flagging a mistake (user, 23 Oct 2026). */
   const NEWS = [
+    ['2026-10-27', '🎯 NEW: My test topics. Your 6 Assessment 2 topics in one place: what you should be able to do, where to revise each one, and 4 quick questions. Tap 🎯 My test topics on Home.', 'Year 8 Science'],
     ['2026-10-26', '📝 What is on your test: everything up to Lesson 5. Europe, China, Polynesia, Vikings, the Renaissance, monarchs, explorers and inventions such as the compass and the astrolabe. The list is at the top of Home: tap a topic to revise it.', 'Year 8 History'],
     ['2026-10-26', '🎬 NEW: every lesson as a short story video (3 to 4 minutes): two voices, pictures from your slides, a timeline, a quick quiz and a recap. Everything in them comes from your lesson slides and class booklets. Open a lesson, then 📘 Read.', ['Year 8 History', 'Year 9 History']],
     ['2026-10-25', '🧱 NEW in ✍️ Practice questions: how to write the 6-mark and 8-mark answers, part by part. Sentence starters from your lessons, a model answer for each part, and 3 new questions from Lessons 2 and 5.', 'Year 8 History'],

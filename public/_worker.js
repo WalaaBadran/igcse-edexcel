@@ -432,7 +432,7 @@ async function visitsHook(request, env, ctx) {
   }
   // 💬 owner actions from the private page (forms, so they work without any script): reply, finish a conversation,
   // make or stop a "show link"
-  if (/^\/__visits\/(reply|done|pass|stop|reopen|solved|lockon|lockoff|joinnew|del|delused)$/.test(url.pathname) && request.method === 'POST') {
+  if (/^\/__visits\/(reply|done|pass|stop|reopen|solved|lockon|lockoff|joinnew|del|delused|delmsg)$/.test(url.pathname) && request.method === 'POST') {
     let f; try { f = await request.formData(); } catch (e) { return new Response('Bad request', { status: 400 }); }
     const k = String(f.get('k') || '');
     if (!env.DB || !(await vOwner(k))) return new Response('Not found', { status: 404, headers: { 'x-robots-tag': 'noindex' } });
@@ -446,6 +446,11 @@ async function visitsHook(request, env, ctx) {
       back += '#msgs';
     }
     if (op === 'done') { await env.DB.prepare('UPDATE chat SET done = ? WHERE thread = ?').bind(f.get('undo') ? 0 : 1, t).run(); back += '#msgs'; }
+    if (op === 'delmsg') {   // 🗑 delete one of the owner's own replies (user 2026-10-27): it also disappears from the student's chat
+      const id = parseInt(f.get('id'), 10);
+      if (id > 0) await env.DB.prepare("DELETE FROM chat WHERE id = ? AND sender = 'owner'").bind(id).run();
+      back += '#msgs';
+    }
     if (op === 'solved') {   // ✅ one tap: the student is told it is solved and thanked, and the conversation is finished
       // (user 2026-10-21: "inform the one who flags a mistake if solved and say thanks for flagging and helping to improve")
       const s = t ? await env.DB.prepare("SELECT site, MAX(kind = 'mistake') AS mk FROM chat WHERE thread = ? AND sender = 'student'").bind(t).first() : null;
@@ -652,7 +657,7 @@ async function visitsHook(request, env, ctx) {
       const s = m[0].site, first = m.find(x => x.sender === 'student') || m[0], kinds = [...new Set(m.filter(x => x.sender === 'student').map(x => x.kind))];
       const link = `https://${vHost(s)}${first.url && first.url.startsWith('/') ? first.url : '/'}`, canReply = !/^flag-/.test(m[0].thread);
       return `<div class="th${isOpen && m[m.length - 1].sender === 'student' ? ' new' : ''}"><div class="thh"><b>${esc(VSITES[s] || s)}</b> ${kinds.map(x => `<span class="k k-${esc(x)}">${KIND[x] || KIND.other}</span>`).join(' ')} <small>· page: ${esc(first.page || 'Home')} · <a href="${esc(link)}" target="_blank" rel="noopener">open it</a></small></div>
-${m.map(x => `<div class="b ${x.sender === 'owner' ? 'mine' : 'st'}"><div>${esc(x.msg).replace(/\n/g, '<br>')}</div><small>${x.sender === 'owner' ? 'You' : 'Student'} · ${when(x.created)}</small></div>`).join('')}
+${m.map(x => `<div class="b ${x.sender === 'owner' ? 'mine' : 'st'}"><div>${esc(x.msg).replace(/\n/g, '<br>')}</div><small>${x.sender === 'owner' ? 'You' : 'Student'} · ${when(x.created)}</small>${x.sender === 'owner' ? `<form method="post" action="/__visits/delmsg" class="dmf">${hid('k', k)}${hid('id', x.id)}<button type="submit" class="dmb" data-sure="Tap again to delete">🗑 Delete</button></form>` : ''}</div>`).join('')}
 ${isOpen ? (canReply ? `<form method="post" action="/__visits/reply" class="rf">${hid('k', k)}${hid('t', m[0].thread)}<div class="qr">${QUICK.map(q => `<button type="button" class="ghost" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div><textarea name="text" rows="2" required placeholder="Write a reply, or tap a ready answer above and edit it. The student sees it on the phone or computer they used."></textarea><button type="submit">Send reply</button></form>`
         : '<p class="small">Sent before replies existed, so the student can’t see a reply.</p>')
         + `<div class="qr">${canReply ? `<form method="post" action="/__visits/solved" class="df">${hid('k', k)}${hid('t', m[0].thread)}<button type="submit">✅ Solved: thank them &amp; finish</button></form>` : ''}<form method="post" action="/__visits/done" class="df">${hid('k', k)}${hid('t', m[0].thread)}<button type="submit" class="ghost">✓ Done (no message)</button></form></div>`
@@ -755,7 +760,7 @@ th{font-size:13px;color:var(--muted)}td.z{color:var(--muted)}small{color:var(--m
 h2{margin:22px 0 4px}.th{background:var(--card);border-radius:12px;box-shadow:0 2px 12px #0001;padding:12px;margin:0 0 12px;display:grid;gap:8px;max-width:760px}
 .th.new{outline:2px solid var(--brand)}.thh{line-height:1.7}.k{display:inline-block;padding:1px 9px;border-radius:999px;font-size:13px;font-weight:600;background:var(--bg)}
 .k-mistake{color:#b42318}.k-dislike{color:#9a5b00}.k-idea{color:var(--brand)}.b{max-width:85%;padding:8px 12px;border-radius:14px;white-space:normal;overflow-wrap:anywhere}
-.b.st{background:var(--bg);justify-self:start;border-bottom-left-radius:4px}.b.mine{background:var(--brand);color:#fff;justify-self:end;border-bottom-right-radius:4px}.b.mine small{color:#e6fff6}
+.b.st{background:var(--bg);justify-self:start;border-bottom-left-radius:4px}.b.mine{background:var(--brand);color:#fff;justify-self:end;border-bottom-right-radius:4px}.b.mine small{color:#e6fff6}.dmf{margin:4px 0 0;text-align:right}.dmb{background:transparent;border:1px solid rgba(255,255,255,.6);color:#fff;font-size:12px;padding:2px 8px;border-radius:999px;cursor:pointer}
 .rf{display:grid;gap:6px}.qr{display:flex;flex-wrap:wrap;gap:6px}.qr button{font-size:13px;padding:4px 10px}.rf textarea{font:inherit;font-size:16px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:inherit}
 button{font:inherit;font-weight:600;padding:8px 14px;border-radius:999px;border:0;background:var(--brand);color:#fff;cursor:pointer;justify-self:start}button.ghost{background:transparent;color:var(--brand);border:1px solid var(--line)}
 select{font:inherit;padding:7px;border-radius:8px}.newlink{background:var(--card);border:2px solid var(--brand);border-radius:12px;padding:12px;overflow-wrap:anywhere;max-width:760px}

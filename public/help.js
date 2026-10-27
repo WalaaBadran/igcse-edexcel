@@ -176,12 +176,21 @@
       ['2026-10-11', 'Hard engineering was said to be always better or worse than soft engineering.', 'Your summary sheet says the choice depends on land value, population at risk and the local economy.'],
       ['2026-10-11', 'Graph and map questions were shown without their graph or map.', 'The slide now appears with the question.']
     ],
-    'Year 9 Geography': [
-      ['2026-10-11', 'A question said Japan\'s death rate has fallen.', 'The question is now about life expectancy, with a note that Japan\'s death rate is actually rising (an older population).'],
-      ['2026-10-11', 'Cacti were listed as Sahara plants.', 'Drought-resistant shrubs, grasses and acacia trees (cacti are from the Americas).'],
-      ['2026-10-11', 'Volcano and weather points were too certain.', '"Some gases, like carbon dioxide, collect in low areas"; warnings help but are never certain; heat stress added for the Olympics.'],
-      ['2026-10-11', 'All Bedouin were described as nomadic; a pyramid "proves" a trend.', '"Some communities, traditionally" nomadic; a wide base "suggests" a trend.'],
+    'Year 9 Geography': [   // user 27 Oct: only lines that match the school files (the 11 Oct lines that used outside facts are gone)
+      ['2026-10-27', 'Some answers and explanations added facts that are not in your school files (for example Tokyo\'s history, Hiroshima, anime, Apple and Google).', 'They now use only your lesson slides and summary sheets.'],
+      ['2026-10-27', 'Lava flows were said to move "a few metres per hour".', 'As on your slide: "a few metres to a few hundred metres per hour".'],
+      ['2026-10-27', 'Some of the answers written on your slides were reworded or missing.', 'They are now shown word for word.'],
+      ['2026-10-27', 'Six questions said "use the graph" but showed no graph.', 'The graph, map or pyramids now appear with the question.'],
+      ['2026-10-27', 'Skills-lab answers typed with a unit (for example 14 °C) were marked wrong.', 'They now count.'],
+      ['2026-10-27', 'The ⚡ Revise tab still had some old terms and meanings.', 'It now matches the notes.'],
       ['2026-10-11', 'Some graph and pyramid questions had no figure, and mark schemes were not labelled.', 'The figures now appear with their questions, and mark schemes say "official" or "suggested".']
+    ],
+    'Year 9 History': [   // user 27 Oct: school files only
+      ['2026-10-27', 'Some notes and answers added facts that are not in your lesson slides or booklets (for example "six weeks" and "September 1914").', 'They now use only your lesson slides and booklets.'],
+      ['2026-10-27', 'The notes said nationalism encouraged militarism.', 'As on your plenary slide: "Increasing pride in military encouraged nationalism".'],
+      ['2026-10-27', '"Describe two features of life in the trenches" was marked out of 4.', 'It is 6 marks, with your slide\'s own mark scheme.'],
+      ['2026-10-27', 'Some cartoon answers did not match the pictures on your slides.', 'They now describe the cartoons you see.'],
+      ['2026-10-27', 'Some typed answers that matched your slide were marked wrong (for example the Black Hand and the naval race), and a few wrong answers were accepted.', 'Your slide\'s answers now get the mark, and those wrong answers do not.']
     ],
     'Year 9 English': [
       ['2026-10-21', 'Timed full answer: a quotation with one word missing or changed was only called “not in the text”, so it looked like a mistake by the site.', 'The site now shows the real words and what is different (for example “Missing: being”), and a quotation with a small typing slip still counts, with a spelling note.'],

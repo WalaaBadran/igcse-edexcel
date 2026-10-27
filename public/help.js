@@ -106,6 +106,50 @@
       if (document.body) mount(); else document.addEventListener('DOMContentLoaded', mount);
     }
   } catch (e) {}
+  // 🏫 School time (user 2026-10-27: "make all the sites not working during school time from 7:30 am till 4 pm Monday–Thursday and
+  // on Friday from 7:30 am till 12 pm"): on school days only (open in holidays: dates from the school's 2026–27 calendar; Eid dates
+  // may move, so update OFF if the school confirms new ones), UAE time whatever the device's time zone. The whole page is covered and
+  // opens again by itself at the end time. Not on the owner's devices, show links, test browsers or the IGCSE copy anyone may share.
+  // <site>/?school=preview shows it on any device.
+  try {
+    const TERMS = [['2026-08-31', '2026-12-11'], ['2027-01-04', '2027-04-02'], ['2027-04-12', '2027-07-02']];
+    const OFF = [['2026-10-12', '2026-10-16'], ['2026-12-02', '2026-12-04'], ['2027-03-08', '2027-03-12'], ['2027-05-17', '2027-05-18']];
+    const shutTill = () => {   // the UAE minute of the day it opens again, or 0 when the sites are open
+      const u = new Date(Date.now() + 4 * 36e5), day = u.toISOString().slice(0, 10), wd = u.getUTCDay(), min = u.getUTCHours() * 60 + u.getUTCMinutes();
+      const inR = ([a, b]) => day >= a && day <= b;
+      if (!TERMS.some(inR) || OFF.some(inR)) return 0;
+      const end = wd >= 1 && wd <= 4 ? 16 * 60 : wd === 5 ? 12 * 60 : 0;
+      return end && min >= 7 * 60 + 30 && min < end ? end : 0;
+    };
+    const preview = /[?&]school=preview(?:&|$)/.test(location.search);
+    let own = false; try { own = localStorage.getItem('vown') === '1'; } catch (e) {}
+    if (preview || (!own && !GUEST && !SHARE && !navigator.webdriver && /\.workers\.dev$/.test(location.hostname))) {
+      let w = null;
+      const show = end => {
+        if (!w) {
+          const css = document.createElement('style'); css.id = 'school-css';
+          css.textContent = '.school-wrap{position:fixed;inset:0;z-index:10001;background:var(--bg,#f4f6fb);display:flex;align-items:center;justify-content:center;padding:16px;overflow:auto}'
+            + '.school-card{background:var(--card,#fff);color:var(--ink,#1d2433);max-width:440px;width:100%;border-radius:20px;padding:22px 18px;box-shadow:0 10px 40px rgba(0,0,0,.18);text-align:center;font-family:inherit;box-sizing:border-box}'
+            + '.school-card h2{margin:4px 0 10px;font-size:22px;line-height:1.3}.school-card p{margin:0 0 10px;font-size:16px;line-height:1.5}.school-card .school-small{font-size:13.5px;color:var(--muted,#5b6475);margin-top:14px}';
+          document.head.appendChild(css);
+          w = document.createElement('div'); w.className = 'school-wrap'; w.setAttribute('role', 'dialog'); w.setAttribute('aria-modal', 'true'); w.setAttribute('aria-labelledby', 'school-t');
+          document.body.appendChild(w);
+          [...document.body.children].forEach(el => { if (el !== w) el.inert = true; });   // nothing behind it can be used
+          document.querySelectorAll('video, audio').forEach(m => { try { m.pause(); } catch (e) {} });
+          try { speechSynthesis.cancel(); } catch (e) {}
+        }
+        const t = end >= 16 * 60 ? '4:00 pm' : '12:00 pm', ta = end >= 16 * 60 ? '4:00 مساءً' : '12:00 ظهرًا';
+        w.innerHTML = '<div class="school-card"><div style="font-size:38px" aria-hidden="true">🏫</div><h2 id="school-t">School time · <span lang="ar" dir="rtl">وقت المدرسة</span></h2>'
+          + '<p>The study sites are closed during school hours. They open again today at <b>' + t + '</b>.</p>'
+          + '<p lang="ar" dir="rtl">مواقع المراجعة مغلقة أثناء الدوام المدرسي، وتفتح اليوم مرة أخرى الساعة <b>' + ta + '</b>.</p>'
+          + '<p class="school-small">Your saved work is kept.<br><span lang="ar" dir="rtl">عملك المحفوظ باقٍ.</span>' + (preview ? '<br><b>👀 Preview only</b>' : '') + '</p></div>';
+      };
+      const hide = () => { if (!w) return; w.remove(); w = null; const c = document.getElementById('school-css'); if (c) c.remove(); [...document.body.children].forEach(el => { el.inert = false; }); };
+      const check = () => { const end = preview ? 16 * 60 : shutTill(); if (end) show(end); else hide(); };
+      const start = () => { check(); setInterval(check, 20000); document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); }); };
+      if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
+    }
+  } catch (e) {}
   const shareText = h => !SHARE ? h : h
     .replace('It is not run by, approved by or connected to the school or its teachers.', 'It is not run by, approved by or connected to any school or exam board.')
     .replace(/Lesson materials, past-paper questions, textbook extracts and other resources <b>belong to their owners<\/b>\. .*?Please don't share them outside the class\./,

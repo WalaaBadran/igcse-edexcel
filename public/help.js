@@ -121,14 +121,15 @@
   /* ✅ Corrections made: shown on each site's Help page (matched by the start of the page title). Newest first.
      Each entry: [date, what was wrong, what it says now]. Add a line whenever a reported mistake is fixed. */
   const FIXES = {
-    'Year 8 Geography': [
-      ['2026-10-11', 'Biopiracy was linked to pesticides and GM crops.', 'Biopiracy = taking plants or local knowledge without permission or fair payment. The pesticides/GM point is labelled as what the lesson video says.'],
-      ['2026-10-11', 'The International Potato Centre was said to study "one crop".', 'It works mainly on potatoes and other root crops.'],
-      ['2026-10-11', 'Wave energy "disappears".', 'The energy spreads out into less useful forms.'],
-      ['2026-10-11', '"11 billion people by 2100" had no date or source.', 'Labelled as the older UN graph from the lesson, with the newer 2024 UN figure (about 10.2 billion).'],
-      ['2026-10-11', 'Migration figures were given for Dubai.', 'They are figures for the whole UAE.'],
-      ['2026-10-11', 'Hard engineering was said to be always better or worse than soft engineering.', 'How well each works depends on the place.'],
-      ['2026-10-11', 'Yacon was said to help diabetes.', 'Labelled as a claim made in the episode, not a proven fact.'],
+    'Year 8 Geography': [   // user 27 Oct: only lines that match the school files (slides, summary sheets, comics)
+      ['2026-10-27', 'Some water-shortage impacts were in the wrong group (short-term or long-term).', 'They now match your lesson\'s answer slide: short-term = water-borne disease (cholera) and wildfires; the others are long-term.'],
+      ['2026-10-27', 'About 528,527 people was given as the number from Egypt.', 'As on your recall slide, it is the number of people from the Philippines; Egypt is the top African country.'],
+      ['2026-10-27', 'Some notes added facts that are not in your school files (for example SDG 14, or "checked every day").', 'The notes now use only your lesson slides, summary sheets and comics.'],
+      ['2026-10-27', 'A recall picture showed the answers next to the questions.', 'The charts from the same slide now appear without the answers.'],
+      ['2026-10-27', 'Some recall questions written with AI help were not labelled.', 'They now say "written with AI help".'],
+      ['2026-10-11', '"11 billion people by 2100" had no date or source.', 'Labelled as the UN graph in your lesson (2017).'],
+      ['2026-10-11', 'Migration figures were given for Dubai.', 'As your recall slide says, they are figures for the whole UAE.'],
+      ['2026-10-11', 'Hard engineering was said to be always better or worse than soft engineering.', 'Your summary sheet says the choice depends on land value, population at risk and the local economy.'],
       ['2026-10-11', 'Graph and map questions were shown without their graph or map.', 'The slide now appears with the question.']
     ],
     'Year 9 Geography': [
@@ -155,11 +156,10 @@
       ['2026-10-11', 'The stairs question did not say the people had the same mass.', 'It now says "of the same mass".'],
       ['2026-10-11', 'Solar panels were said to produce nothing when it is cloudy.', 'They produce much less, but not usually zero.']
     ],
-    'Year 8 History': [
-      ['2026-10-11', 'The Lesson 3 slide says the Vikings reached America in 900 CE.', 'The notes give the evidence-based date: about 1000 CE (tree rings show Vikings were there in 1021).'],
-      ['2026-10-11', 'The lesson suggests Vikings were found at Point Rosee.', 'Later digs found no proof of Vikings there; the confirmed site is L\'Anse aux Meadows.'],
-      ['2026-10-11', 'The sextant is listed as a Renaissance tool.', 'It was invented in the 1750s (an earlier version, the octant, in 1731), long after Columbus and da Gama.'],
-      ['2026-10-11', 'Prince Henry\'s "navigation school" at Sagres.', 'Labelled as a legend: historians have found no evidence of an actual school.']
+    'Year 8 History': [   // user 27 Oct: the notes follow the school files only (the 11 Oct lines used outside facts)
+      ['2026-10-27', 'Some notes added facts that are not in your lesson slides, or "corrected" the slides with outside facts.', 'The notes now follow your lesson slides and worksheet only.'],
+      ['2026-10-27', 'L\'Anse aux Meadows was said to be confirmed in "the 1960s", and Point Rosee was said to have "no Viking proof".', 'Both now follow your Lesson 3 slide: confirmed in 1960, and Sarah Parcak found a possible Viking site at Point Rosee.'],
+      ['2026-10-27', 'The caravel was called "light and fast", and the compass and astrolabe were called Renaissance inventions.', 'From your Lesson 1–2 slide: the caravel was "designed for long voyages" and "enhanced maneuverability" (it was easier to steer), and the compass and astrolabe were "advancements" in navigation during the Renaissance.']
     ]
   };
   function fixesHTML() {

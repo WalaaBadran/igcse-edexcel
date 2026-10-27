@@ -56,16 +56,17 @@
   // ⚡ AI marking on a Year 8 site only after a parent allows it on the device (user 2026-10-27, option C); the owner's devices always
   const aiOk = () => { try { return localStorage.getItem('ai-ok') === '1' || localStorage.getItem('vown') === '1'; } catch (e) { return false; } };
   window.AI_MARK_OK = aiOk;
-  const privHTML = () => '<ul class="priv">' + PRIV_EN.map(x => '<li>' + x + '</li>').join('') + '</ul><ul class="priv" lang="ar" dir="rtl">' + PRIV_AR.map(x => '<li>' + x + '</li>').join('') + '</ul>';
+  const privHTML = enOnly => '<ul class="priv">' + PRIV_EN.map(x => '<li>' + x + '</li>').join('') + '</ul>' + (enOnly ? '' : '<ul class="priv" lang="ar" dir="rtl">' + PRIV_AR.map(x => '<li>' + x + '</li>').join('') + '</ul>');
   // 👋 Before you start (user 2026-10-27: "a pop screen that won't open the site or use it unless they declare"): the first time a
-  // device opens this site the whole page is covered until the student ticks "I am 13 or older, or my parent knows I use this
-  // site" and taps Continue. No ✕, no Esc, no tap outside; focus stays in the box. The server only counts declarations per site
+  // device opens this site the whole page is covered until the student ticks "My parent agrees that I use this site" and taps
+  // Continue. Later the same day: English only ("ask me before putting anything in arabic"), wording as in the parents' message
+  // (optional; a parent agrees), and every device is asked once more (key agree2; the old 13+ screen saved agree1). No ✕, no Esc, no tap outside; focus stays in the box. The server only counts declarations per site
   // and day (owner page). Not on the owner's devices, show links, test browsers or the IGCSE copy anyone may share.
   // <site>/?agree=preview shows it on any device (nothing is saved or sent).
   try {
     const preview = /[?&]agree=preview(?:&|$)/.test(location.search);
     let done = false, own = false;
-    try { done = !!localStorage.getItem('agree1'); own = localStorage.getItem('vown') === '1'; } catch (e) {}
+    try { done = !!localStorage.getItem('agree2'); own = localStorage.getItem('vown') === '1'; } catch (e) {}
     if (preview || (!done && !own && !GUEST && !SHARE && !navigator.webdriver && /\.workers\.dev$/.test(location.hostname))) {
       const mount = () => {
         const css = document.createElement('style');
@@ -80,14 +81,14 @@
         document.head.appendChild(css);
         const w = document.createElement('div'); w.className = 'agree-wrap';
         w.setAttribute('role', 'dialog'); w.setAttribute('aria-modal', 'true'); w.setAttribute('aria-labelledby', 'agree-t');
-        w.innerHTML = '<div class="agree-card"><div style="font-size:34px" aria-hidden="true">👋</div><h2 id="agree-t">Before you start <span lang="ar" dir="rtl">· قبل أن تبدأ</span></h2>'
-          + '<p>This is a free revision site for your class. It does not ask for your name and has no adverts.</p>'
-          + '<p lang="ar" dir="rtl">موقع مراجعة مجاني لصفّك. لا يطلب اسمك ولا يعرض إعلانات.</p>'
+        w.innerHTML = '<div class="agree-card"><div style="font-size:34px" aria-hidden="true">👋</div><h2 id="agree-t">Before you start</h2>'
+          + '<p>This is a free revision site for your class. It is not an official school site, it does not ask for your name and it has no adverts.</p>'
+          + '<p><b>Using it is optional.</b></p>'
           + (preview ? '<p><b>👀 Preview: nothing is saved.</b></p>' : '')
-          + '<label class="agree-tick"><input type="checkbox"><span>I am <b>13 or older</b>, or <b>my parent knows</b> I use this site.<br><span lang="ar" dir="rtl">عمري <b>13 سنة أو أكثر</b>، أو <b>وليّ أمري يعلم</b> أنني أستخدم هذا الموقع.</span></span></label>'
-          + '<button type="button" class="agree-go" disabled>Continue · متابعة</button>'
-          + '<p class="agree-small">Under 13 and your parent doesn’t know yet? Ask them first, then come back.<br><span lang="ar" dir="rtl">عمرك أقل من 13 سنة ووليّ أمرك لا يعلم بعد؟ اسأله أولًا ثم عُد.</span></p>'
-          + '<details><summary>🔒 Privacy (for parents) · الخصوصية</summary>' + privHTML() + '</details></div>';
+          + '<label class="agree-tick"><input type="checkbox"><span><b>My parent agrees</b> that I use this site.</span></label>'
+          + '<button type="button" class="agree-go" disabled>Continue</button>'
+          + '<p class="agree-small">Not sure? Ask your parent first, then come back.</p>'
+          + '<details><summary>🔒 Privacy (for parents)</summary>' + privHTML(true) + '</details></div>';
         const box = w.querySelector('.agree-card'), tick = w.querySelector('input'), go = w.querySelector('.agree-go');
         tick.addEventListener('change', () => { go.disabled = !tick.checked; });
         const keep = e => { if (!w.contains(e.target)) { e.stopPropagation(); tick.focus(); } };   // focus never leaves the box
@@ -95,7 +96,7 @@
         const ov = document.documentElement.style.overflow;
         go.onclick = () => {
           if (!tick.checked) return;
-          if (!preview) { try { localStorage.setItem('agree1', new Date().toISOString().slice(0, 10)); } catch (e) {} if (navigator.sendBeacon) navigator.sendBeacon('/__agree'); }
+          if (!preview) { try { localStorage.setItem('agree2', new Date().toISOString().slice(0, 10)); } catch (e) {} if (navigator.sendBeacon) navigator.sendBeacon('/__agree'); }
           w.remove(); css.remove(); document.removeEventListener('focusin', keep, true); document.removeEventListener('keydown', stopKeys, true);
           document.documentElement.style.overflow = ov;
         };
@@ -138,11 +139,10 @@
           document.querySelectorAll('video, audio').forEach(m => { try { m.pause(); } catch (e) {} });
           try { speechSynthesis.cancel(); } catch (e) {}
         }
-        const t = end >= 16 * 60 ? '4:00 pm' : '12:00 pm', ta = end >= 16 * 60 ? '4:00 مساءً' : '12:00 ظهرًا';
-        w.innerHTML = '<div class="school-card"><div style="font-size:38px" aria-hidden="true">🏫</div><h2 id="school-t">School time · <span lang="ar" dir="rtl">وقت المدرسة</span></h2>'
+        const t = end >= 16 * 60 ? '4:00 pm' : '12:00 pm';
+        w.innerHTML = '<div class="school-card"><div style="font-size:38px" aria-hidden="true">🏫</div><h2 id="school-t">School time</h2>'
           + '<p>The study sites are closed during school hours. They open again today at <b>' + t + '</b>.</p>'
-          + '<p lang="ar" dir="rtl">مواقع المراجعة مغلقة أثناء الدوام المدرسي، وتفتح اليوم مرة أخرى الساعة <b>' + ta + '</b>.</p>'
-          + '<p class="school-small">Your saved work is kept.<br><span lang="ar" dir="rtl">عملك المحفوظ باقٍ.</span>' + (preview ? '<br><b>👀 Preview only</b>' : '') + '</p></div>';
+          + '<p class="school-small">Your saved work is kept.' + (preview ? '<br><b>👀 Preview only</b>' : '') + '</p></div>';
       };
       const hide = () => { if (!w) return; w.remove(); w = null; const c = document.getElementById('school-css'); if (c) c.remove(); [...document.body.children].forEach(el => { el.inert = false; }); };
       const check = () => { const end = preview ? 16 * 60 : shutTill(); if (end) show(end); else hide(); };
@@ -982,7 +982,8 @@ ${fixesHTML()}
       if (want !== tv) app.insertBefore(tv, top ? top.nextSibling : app.firstChild); }
   }
   const css = document.createElement('style');
-  css.textContent = `.flagbar { margin: 32px 0 76px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  css.textContent = `@media (max-width: 640px) { .tabs { flex-wrap: wrap; overflow-x: visible; } .tabs a { padding: 9px 11px; } }   /* phones: every tab visible (user 27 Oct, "fix phone display") */
+.flagbar { margin: 32px 0 76px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 .flagbar .flagmsg { flex-basis: 100%; }
 .flagpanel { color: var(--ink, #1d2433); text-align: left; max-width: 520px; margin: 8px auto 0; padding: 12px; border-radius: 12px; border: 1px solid var(--line, #E2E8F0); background: var(--card, #fff); }
 .flagpanel textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 16px; padding: 8px; border-radius: 8px; border: 1px solid var(--line, #CBD5E1); background: transparent; color: inherit; }

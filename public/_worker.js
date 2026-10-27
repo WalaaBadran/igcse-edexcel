@@ -220,7 +220,7 @@ const VSITES = { 'year9-english': 'Y9 English', 'year8-english': 'Y8 English', '
 let visitsReady = false;
 // ⚡ VSCHEMA: the tables below are made once; after that ONE quick check replaces ~16 table statements each time a server copy
 // starts (user 2026-10-21: show links were slow, about 10 s from the year page to a subject). Change it whenever a table changes.
-const VSCHEMA = 'v16';
+const VSCHEMA = 'v17';
 const VDLK = Object.assign(Object.create(null), { dl: '⬇️ Downloaded', file: '📄 Opened', print: '🖨️ Printed' });   // not 'open': a show link's 'open' row = a go started   // ⬇️ kinds of file use (help.js fileUse)
 const vDlName = f => String(f || '').replace(/[\u0000-\u001f<>"`\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
 async function visitsTable(db) {
@@ -254,6 +254,9 @@ async function visitsTable(db) {
   // v16 (user 2026-10-26: "the student survey result … put each day separate"): the same answers by the UAE day they were sent
   // (recorded from 26 Oct 2026; earlier first-round answers have no day)
   await db.prepare('CREATE TABLE IF NOT EXISTS vrate_day (site TEXT, day TEXT, week TEXT, p INTEGER, n INTEGER, PRIMARY KEY (site, day, week, p))').run();
+  // v17 (user 2026-10-27: "a pop screen that won't open the site … unless they declare"): 👋 how many devices ticked "13 or older,
+  // or my parent knows" on each site and day (help.js "Before you start"); totals only
+  await db.prepare('CREATE TABLE IF NOT EXISTS vagree (site TEXT, day TEXT, n INTEGER, PRIMARY KEY (site, day))').run();
   await db.prepare('CREATE TABLE IF NOT EXISTS vkeys (name TEXT PRIMARY KEY, val TEXT)').run();
   await db.prepare("INSERT OR REPLACE INTO vkeys (name, val) VALUES ('schema-visits', ?1)").bind(VSCHEMA).run();
   visitsReady = true;
@@ -397,6 +400,15 @@ async function visitsHook(request, env, ctx) {
   }
   // 📊 the Sunday "how much does this site help you?" pop-up (help.js): one answer, 0–100 in steps of 10, added to this survey
   // round's totals for the site; no device number, nothing that identifies anyone; the owner's devices are not counted
+  // 👋 "Before you start" ticked on this device (help.js): +1 for this site and UAE day; nothing else is sent or kept
+  if (url.pathname === '/__agree' && request.method === 'POST') {
+    const site = url.hostname.split('.')[0];
+    if (env.DB && VSITES[site] && request.headers.get('sec-fetch-site') !== 'cross-site' && !vMine(request)) {
+      const job = (async () => { await visitsTable(env.DB); await env.DB.prepare('INSERT INTO vagree (site, day, n) VALUES (?1, ?2, 1) ON CONFLICT (site, day) DO UPDATE SET n = n + 1').bind(site, vDay()).run(); })().catch(() => {});
+      if (ctx && ctx.waitUntil) ctx.waitUntil(job); else await job;
+    }
+    return new Response(null, { status: 204, headers: { 'cache-control': 'no-store' } });
+  }
   if (url.pathname === '/__rate' && request.method === 'POST') {
     const site = url.hostname.split('.')[0], ps = url.searchParams.get('p') || '';
     if (env.DB && VSITES[site] && /^(100|[1-9]?0)$/.test(ps) && request.headers.get('sec-fetch-site') !== 'cross-site' && !vMine(request)) {
@@ -604,9 +616,11 @@ async function visitsHook(request, env, ctx) {
       devs = (await env.DB.prepare('SELECT day, site, at, kind, secs, pages FROM vdev WHERE day >= ?1 ORDER BY day DESC, at DESC').bind(vDay(1)).all()).results || [];
       wk = (await env.DB.prepare('SELECT day, site, who, kind, secs, visits FROM vdev WHERE day >= ?1 AND who IS NOT NULL').bind(vDay(6)).all()).results || []; }   // today and yesterday only (user 2026-10-21); older days are in the counts
     // 💬 messages, 📊 parts used (last 7 days), 👀 show links (v6, 2026-10-21)
-    let chats = [], uses = [], passes = [], puse = [], goals = [], dls = [], rates = [], rdays = [], l2days = [];
+    let chats = [], uses = [], passes = [], puse = [], goals = [], dls = [], rates = [], rdays = [], l2days = [], agrees = [];
     if (env.DB) {
       await chatSetup(env.DB);
+      // 🔒 privacy note (user 2026-10-27): finished conversations are deleted 90 days after their last message; open ones stay
+      try { await env.DB.prepare('DELETE FROM chat WHERE thread IN (SELECT thread FROM chat GROUP BY thread HAVING MIN(done) = 1 AND MAX(created) < ?1)').bind(Date.now() - 90 * 864e5).run(); } catch (e) {}
       chats = (await env.DB.prepare('SELECT id, thread, site, sender, kind, page, url, msg, created, done FROM chat ORDER BY id DESC LIMIT 2000').all()).results || [];
       uses = (await env.DB.prepare('SELECT site, part, SUM(n) AS n FROM vuse WHERE day >= ?1 GROUP BY site, part ORDER BY n DESC').bind(vDay(6)).all()).results || [];
       passes = (await env.DB.prepare(`SELECT rowid AS id, tok, site, uses, created FROM vpass WHERE created > ?1 ORDER BY created DESC LIMIT ${VKEEP}`).bind(Date.now() - 14 * 864e5).all()).results || [];
@@ -616,6 +630,7 @@ async function visitsHook(request, env, ctx) {
       try { rates = (await env.DB.prepare('SELECT site, week, p, n FROM vrate WHERE week >= ?1').bind(vSun(3)).all()).results || []; } catch (e) {}   // 📊 weekly survey
       try { rdays = (await env.DB.prepare('SELECT site, day, p, n FROM vrate_day WHERE day >= ?1').bind(vDay(27)).all()).results || [];   // 📊 … by day (4 weeks)
         l2days = (await env.DB.prepare("SELECT site, p, SUM(n) AS n FROM vrate_day WHERE week = 'launch2' GROUP BY site, p").all()).results || []; } catch (e) {}
+      try { agrees = (await env.DB.prepare('SELECT site, day, n FROM vagree').all()).results || []; } catch (e) {}   // 👋 Before you start
     }
     // 🔑 class pass: the lock, the class links, and how many recent devices already have the pass
     let cpi = null, cpT = { n: 0, p: 0 }, cp3 = { n: 0, p: 0 };
@@ -748,7 +763,7 @@ select{font:inherit;padding:7px;border-radius:8px}.newlink{background:var(--card
 td.l{text-align:left;white-space:normal}</style></head><body>
 <h1>📈 Visits${waiting ? ` <small style="color:var(--brand)">· 💬 ${waiting} new</small>` : ''}</h1>
 <p style="margin:0 0 8px" class="small">🔄 Updated at <b>${new Date(Date.now() + 4 * 3600e3).toISOString().slice(11, 19)}</b> (UAE time). This page refreshes by itself every 30 seconds while it is on screen, and as soon as you come back to it. <a href="#" id="rnow">↻ Refresh now</a></p>
-<div class="nav"><a href="#msgs">💬 Messages${waiting ? ` (${waiting} new)` : ''}</a><a href="#rate">📊 Survey %</a><a href="#fb">❤️ Opinions &amp; ideas</a><a href="#use">📊 What they use</a><a href="#dl">⬇️ Downloads${dlToday ? ` (${dlToday} today)` : ''}</a><a href="#show">👀 Show links</a><a href="#visits">📈 Visits</a><a href="/__visits/papers?k=${encodeURIComponent(k)}">📚 Maths papers</a><a href="https://year9.deirarevise.workers.dev/" target="_blank" rel="noopener">🏠 Year 9 hub</a><a href="https://year8.deirarevise.workers.dev/" target="_blank" rel="noopener">🏠 Year 8 hub</a></div><p>Each box: how many <b>devices</b> opened that site that day (UAE time). A device counts once a day per site, however many times it opens it. <small>"· 3 used"</small> = how many of them really used it (2 minutes or more of tapping, typing, scrolling, watching a video or listening). Day total = all the sites' boxes for that day added up; a student who used 3 sites counts 3 there. Total row = each site's days added up. Counting started on 19 Oct 2026. Only you have this link: please keep it private.</p>
+<div class="nav"><a href="#msgs">💬 Messages${waiting ? ` (${waiting} new)` : ''}</a><a href="#rate">📊 Survey %</a><a href="#agree">👋 Ticked</a><a href="#fb">❤️ Opinions &amp; ideas</a><a href="#use">📊 What they use</a><a href="#dl">⬇️ Downloads${dlToday ? ` (${dlToday} today)` : ''}</a><a href="#show">👀 Show links</a><a href="#visits">📈 Visits</a><a href="/__visits/papers?k=${encodeURIComponent(k)}">📚 Maths papers</a><a href="https://year9.deirarevise.workers.dev/" target="_blank" rel="noopener">🏠 Year 9 hub</a><a href="https://year8.deirarevise.workers.dev/" target="_blank" rel="noopener">🏠 Year 8 hub</a></div><p>Each box: how many <b>devices</b> opened that site that day (UAE time). A device counts once a day per site, however many times it opens it. <small>"· 3 used"</small> = how many of them really used it (2 minutes or more of tapping, typing, scrolling, watching a video or listening). Day total = all the sites' boxes for that day added up; a student who used 3 sites counts 3 there. Total row = each site's days added up. Counting started on 19 Oct 2026. Only you have this link: please keep it private.</p>
 <p id="me" style="color:var(--brand);font-weight:600"></p>
 <script>(function () { var own = false; try { own = localStorage.getItem('vown') === '1'; } catch (e) {}
   var me = document.getElementById('me'), go = ${JSON.stringify(meUrl)}, done = /[?&]done=1/.test(location.search);
@@ -764,6 +779,9 @@ ${doneT.length ? `<details><summary>Finished conversations (${doneT.length})</su
 ${dayHTML}
 <h3 style="margin:16px 0 4px">🔁 Each survey round</h3>
 ${rateHTML}
+<h2 id="agree">👋 “Before you start” ticked</h2><p>The first time a phone or computer opens a site, the site stays covered until the student ticks <b>“I am 13 or older, or my parent knows I use this site”</b>. Each number is how many devices ticked it: no names, no device numbers. Your own devices and show links never see it. <b>👀 To see it yourself:</b> <a href="https://year9-history.deirarevise.workers.dev/?agree=preview" target="_blank" rel="noopener">open a preview</a> (nothing is saved).</p>
+${(() => { const S = Object.keys(VSITES).filter(s => agrees.some(a => a.site === s)); const sum = (s, d) => agrees.filter(a => a.site === s && (!d || a.day === d)).reduce((x, a) => x + a.n, 0);
+  return S.length ? `<div class="wrap"><table style="min-width:0"><tr><th>Site</th><th>Today</th><th>All</th></tr>${S.map(s => `<tr><td>${esc(VSITES[s])}</td><td>${sum(s, vDay()) || '<span class="z">–</span>'}</td><td><b>${sum(s)}</b></td></tr>`).join('')}<tr class="t"><td><b>All sites</b></td><td>${agrees.filter(a => a.day === vDay()).reduce((x, a) => x + a.n, 0)}</td><td><b>${agrees.reduce((x, a) => x + a.n, 0)}</b></td></tr></table></div>` : '<p>No ticks yet.</p>'; })()}
 <h2 id="fb">❤️ What students think and suggest, by site</h2><p>Every message by site, newest first. <b style="color:#b42318">Open</b> = still to do (it is also at the top of Messages, where you reply or tap ✅ Solved); <b>finished</b> = done. Test messages from building the site are not counted.</p>
 ${rateRows.length ? `<p><b>👍 / 👎 Was this page helpful?</b> One-tap answers at the bottom of each page (last 7 days), by part of the site:</p><div class="wrap" style="margin-bottom:12px"><table style="min-width:0"><tr><th>Site</th><th style="text-align:left">Part: 👍 helpful · 👎 not helpful</th></tr>${rateRows.map(([s, l]) => `<tr><td>${esc(VSITES[s])}</td><td class="l">${l.map(([p, [u, d]]) => `${esc(uname(p))}: 👍 <b>${u}</b> · 👎 <b${d > u ? ' style="color:#b42318"' : ''}>${d}</b>`).join(' &nbsp;|&nbsp; ')}</td></tr>`).join('')}</table></div>` : ''}
 ${opnRows.length ? `<p><b>❤️ What they think, and 📅 how often they use it</b> (one-tap answers from 💬 Your say; each student counted once, with their newest answer):</p><div class="wrap" style="margin-bottom:12px"><table style="min-width:0"><tr><th>Site</th><th style="text-align:left">Do they like it?</th><th style="text-align:left">Is it useful?</th><th style="text-align:left">How often?</th></tr>${opnRows.map(([s, n]) => `<tr><td>${esc(VSITES[s])}</td><td class="l">${opnCell(n, 'like')}</td><td class="l">${opnCell(n, 'useful')}</td><td class="l">${opnCell(n, 'often')}</td></tr>`).join('')}</table></div>` : ''}

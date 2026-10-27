@@ -1,5 +1,5 @@
 /* ❓ Help page shared by all subject sites (copied into each site as help.js; wired by hub-work/add_help.py).
-   HELP.view(groups, o): groups = the site's NAVG menu; o = { backup: 'progress' | 'home', offline: bool, claude: bool }
+   HELP.view(groups, o): groups = the site's NAVG menu; o = { backup: 'progress' | 'home', offline: bool, claude: bool, aiMark: bool (the parents' switch for ⚡ Mark here) }
    <script src="help.js" data-plain> (Year 8 Maths): no "What's new" and no "This year" box; those describe the other sites. */
 (function () {
   /* 👀 Guest mode (a "show link" made on the owner's private page; user 2026-10-21: "a link to a friend outside the school that
@@ -36,6 +36,75 @@
   if (!GUEST && !SHARE && location.protocol === 'https:') try {
     const t = +localStorage.getItem('vcp-at') || 0;
     if (Date.now() - t > 20 * 864e5) fetch('/__class/claim', { method: 'POST', credentials: 'same-origin' }).then(r => { if (r.status === 204) localStorage.setItem('vcp-at', String(Date.now())); }).catch(() => {});
+  } catch (e) {}
+  // 🔒 the privacy note for parents, English and Arabic (user 2026-10-27, deep check yellow item 1, option B): on the Help page
+  // and inside the "Before you start" screen
+  const PRIV_EN = ['This site does not ask for names, emails or phone numbers, and has no adverts.',
+    '<b>Visits:</b> each phone or computer gets a random number, not a name. Details of which pages were opened are deleted after 15 days; only daily totals are kept.',
+    '<b>Saved progress:</b> only if a parent turns on online saving. It is kept under a random code, can be deleted at any time, and is removed after one year without use.',
+    '<b>📣 Messages:</b> what a student writes in “Tell us” is kept so it can be answered. Finished conversations are deleted after 90 days. Please do not write names.',
+    '<b>🤖 Ask AI:</b> questions are not saved.', '<b>Survey and usage:</b> counted as totals only.',
+    '<b>One small cookie</b> (the class pass) keeps the site for the class. It holds no personal details.',
+    'A parent can ask for anything to be deleted through 📣 Tell us.'];
+  const PRIV_AR = ['لا يطلب هذا الموقع أسماء أو بريدًا إلكترونيًا أو أرقام هواتف، ولا يعرض إعلانات.',
+    '<b>الزيارات:</b> يحصل كل هاتف أو حاسوب على رقم عشوائي بدون اسم. تُحذف تفاصيل الصفحات التي فُتحت بعد 15 يومًا، ويبقى المجموع اليومي فقط.',
+    '<b>حفظ التقدّم:</b> فقط إذا فعّل وليّ الأمر الحفظ عبر الإنترنت. يُحفظ تحت رمز عشوائي، ويمكن حذفه في أي وقت، ويُحذف بعد سنة من عدم الاستخدام.',
+    '<b>📣 الرسائل:</b> ما يكتبه الطالب في «Tell us» يُحفظ للرد عليه. تُحذف المحادثات المنتهية بعد 90 يومًا. يُرجى عدم كتابة الأسماء.',
+    '<b>🤖 اسأل الذكاء الاصطناعي:</b> لا تُحفظ الأسئلة.', '<b>الاستبيان والاستخدام:</b> تُحسب كمجموع فقط.',
+    '<b>ملف تعريف ارتباط صغير واحد</b> (تصريح الصف) يُبقي الموقع خاصًا بالصف، ولا يحتوي على بيانات شخصية.',
+    'يمكن لوليّ الأمر طلب حذف أي شيء عبر 📣 Tell us.'];
+  // ⚡ AI marking on a Year 8 site only after a parent allows it on the device (user 2026-10-27, option C); the owner's devices always
+  const aiOk = () => { try { return localStorage.getItem('ai-ok') === '1' || localStorage.getItem('vown') === '1'; } catch (e) { return false; } };
+  window.AI_MARK_OK = aiOk;
+  const privHTML = () => '<ul class="priv">' + PRIV_EN.map(x => '<li>' + x + '</li>').join('') + '</ul><ul class="priv" lang="ar" dir="rtl">' + PRIV_AR.map(x => '<li>' + x + '</li>').join('') + '</ul>';
+  // 👋 Before you start (user 2026-10-27: "a pop screen that won't open the site or use it unless they declare"): the first time a
+  // device opens this site the whole page is covered until the student ticks "I am 13 or older, or my parent knows I use this
+  // site" and taps Continue. No ✕, no Esc, no tap outside; focus stays in the box. The server only counts declarations per site
+  // and day (owner page). Not on the owner's devices, show links, test browsers or the IGCSE copy anyone may share.
+  // <site>/?agree=preview shows it on any device (nothing is saved or sent).
+  try {
+    const preview = /[?&]agree=preview(?:&|$)/.test(location.search);
+    let done = false, own = false;
+    try { done = !!localStorage.getItem('agree1'); own = localStorage.getItem('vown') === '1'; } catch (e) {}
+    if (preview || (!done && !own && !GUEST && !SHARE && !navigator.webdriver && /\.workers\.dev$/.test(location.hostname))) {
+      const mount = () => {
+        const css = document.createElement('style');
+        css.textContent = '.agree-wrap{position:fixed;inset:0;z-index:10000;background:var(--bg,#f4f6fb);display:flex;align-items:center;justify-content:center;padding:16px;overflow:auto}'
+          + '.agree-card{background:var(--card,#fff);color:var(--ink,#1d2433);max-width:440px;width:100%;max-height:calc(100vh - 32px);overflow:auto;border-radius:20px;padding:20px 18px 16px;box-shadow:0 10px 40px rgba(0,0,0,.18);text-align:center;font-family:inherit;box-sizing:border-box}'
+          + '.agree-card h2{margin:4px 0 8px;font-size:21px;line-height:1.3}.agree-card p{margin:0 0 10px;font-size:15px;line-height:1.5}.agree-card [lang=ar]{font-size:15.5px}'
+          + '.agree-tick{display:flex;gap:10px;align-items:flex-start;text-align:start;border:2px solid var(--line,#d0d5dd);border-radius:14px;padding:12px;margin:6px 0 12px;cursor:pointer;font-size:15px;line-height:1.45}'
+          + '.agree-tick input{width:24px;height:24px;flex:none;margin:2px 0 0;accent-color:var(--brand,#4F46E5)}.agree-tick:has(input:checked){border-color:var(--brand,#4F46E5)}'
+          + '.agree-go{border:0;border-radius:12px;padding:12px 26px;font:inherit;font-weight:800;font-size:16px;background:var(--brand,#4F46E5);color:#fff;cursor:pointer}.agree-go:disabled{opacity:.4;cursor:default}'
+          + '.agree-small{font-size:13px!important;color:var(--muted,#5b6475);margin:12px 0 8px!important}.agree-card details{text-align:start;font-size:13.5px;margin-top:6px}'
+          + '.agree-card summary{cursor:pointer;font-weight:700;text-align:center}.priv{margin:8px 0 0;padding-inline-start:20px;line-height:1.5}.priv li{margin:0 0 5px}';
+        document.head.appendChild(css);
+        const w = document.createElement('div'); w.className = 'agree-wrap';
+        w.setAttribute('role', 'dialog'); w.setAttribute('aria-modal', 'true'); w.setAttribute('aria-labelledby', 'agree-t');
+        w.innerHTML = '<div class="agree-card"><div style="font-size:34px" aria-hidden="true">👋</div><h2 id="agree-t">Before you start <span lang="ar" dir="rtl">· قبل أن تبدأ</span></h2>'
+          + '<p>This is a free revision site for your class. It does not ask for your name and has no adverts.</p>'
+          + '<p lang="ar" dir="rtl">موقع مراجعة مجاني لصفّك. لا يطلب اسمك ولا يعرض إعلانات.</p>'
+          + (preview ? '<p><b>👀 Preview: nothing is saved.</b></p>' : '')
+          + '<label class="agree-tick"><input type="checkbox"><span>I am <b>13 or older</b>, or <b>my parent knows</b> I use this site.<br><span lang="ar" dir="rtl">عمري <b>13 سنة أو أكثر</b>، أو <b>وليّ أمري يعلم</b> أنني أستخدم هذا الموقع.</span></span></label>'
+          + '<button type="button" class="agree-go" disabled>Continue · متابعة</button>'
+          + '<p class="agree-small">Under 13 and your parent doesn’t know yet? Ask them first, then come back.<br><span lang="ar" dir="rtl">عمرك أقل من 13 سنة ووليّ أمرك لا يعلم بعد؟ اسأله أولًا ثم عُد.</span></p>'
+          + '<details><summary>🔒 Privacy (for parents) · الخصوصية</summary>' + privHTML() + '</details></div>';
+        const box = w.querySelector('.agree-card'), tick = w.querySelector('input'), go = w.querySelector('.agree-go');
+        tick.addEventListener('change', () => { go.disabled = !tick.checked; });
+        const keep = e => { if (!w.contains(e.target)) { e.stopPropagation(); tick.focus(); } };   // focus never leaves the box
+        const stopKeys = e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); } };
+        const ov = document.documentElement.style.overflow;
+        go.onclick = () => {
+          if (!tick.checked) return;
+          if (!preview) { try { localStorage.setItem('agree1', new Date().toISOString().slice(0, 10)); } catch (e) {} if (navigator.sendBeacon) navigator.sendBeacon('/__agree'); }
+          w.remove(); css.remove(); document.removeEventListener('focusin', keep, true); document.removeEventListener('keydown', stopKeys, true);
+          document.documentElement.style.overflow = ov;
+        };
+        document.addEventListener('focusin', keep, true); document.addEventListener('keydown', stopKeys, true);
+        document.documentElement.style.overflow = 'hidden';
+        document.body.appendChild(w); box.scrollTop = 0; setTimeout(() => tick.focus(), 50);
+      };
+      if (document.body) mount(); else document.addEventListener('DOMContentLoaded', mount);
+    }
   } catch (e) {}
   const shareText = h => !SHARE ? h : h
     .replace('It is not run by, approved by or connected to the school or its teachers.', 'It is not run by, approved by or connected to any school or exam board.')
@@ -138,7 +207,13 @@ ${window.ASK_AI ? `<div class="card" style="margin-top:12px"><h3>🤖 Stuck? Ask
     <li>No sign-up, no names, no ads.<span class="needsync"> Online saving is optional: a parent turns it on, only study progress is stored under a random code (no names, emails or phone numbers), and it can be deleted at any time.</span></li>
     ${window.ASK_AI ? '<li>The <b>🤖 Ask AI</b> helper uses a free AI model (Google’s open Gemma model, run by Cloudflare). Each question is checked for safety first, it only helps with school work, and this site does <b>not save</b> questions or answers. A daily limit keeps it free.</li>' : ''}
     ${o.claude ? '<li>Some writing tasks have an optional button that copies the answer so it can be pasted into Claude (claude.ai) for feedback. Nothing is sent unless someone chooses to do this. Claude accounts are for adults (18+), so a parent should do this step.</li>' : ''}
-  </ul></div>
+  </ul>
+  <details style="margin-top:10px"><summary><b>🔒 Privacy (for parents) · الخصوصية</b></summary>${privHTML()}</details></div>
+${o.aiMark ? `<div class="card" id="aimark" style="margin-top:12px"><h3>👪 For parents: AI marking (⚡ Mark here)</h3>
+  <p class="small" style="margin:0 0 6px"><b>⚡ Mark here</b> sends your child's writing to a free AI (run by Cloudflare) for detailed feedback. Nothing is saved. Because of the UAE Ministry of Education guidance on AI for children under 13, it is <b>off</b> until a parent switches it on for this phone or computer.</p>
+  <p class="small" lang="ar" dir="rtl" style="margin:0 0 8px"><b>⚡ Mark here</b> يرسل كتابة طفلك إلى ذكاء اصطناعي مجاني (تشغّله Cloudflare) للحصول على ملاحظات مفصّلة، ولا يُحفظ شيء. وبسبب إرشادات وزارة التربية والتعليم في الإمارات حول الذكاء الاصطناعي للأطفال دون 13 سنة، يبقى <b>مغلقًا</b> حتى يفعّله وليّ الأمر على هذا الهاتف أو الحاسوب.</p>
+  <label style="display:flex;gap:10px;align-items:flex-start;border:2px solid var(--line,#d0d5dd);border-radius:14px;padding:12px;cursor:pointer"><input type="checkbox" style="width:22px;height:22px;flex:none;margin:2px 0 0" ${aiOk() ? 'checked' : ''} onchange="try { localStorage.setItem('ai-ok', this.checked ? '1' : '') } catch (e) {} document.getElementById('aimarkst').textContent = this.checked ? '✓ AI marking is on for this device. · التصحيح بالذكاء الاصطناعي مفعّل على هذا الجهاز.' : 'AI marking is off for this device. · التصحيح بالذكاء الاصطناعي مغلق على هذا الجهاز.'"><span>I am a parent and I allow AI marking on this device.<br><span lang="ar" dir="rtl">أنا وليّ الأمر وأسمح بالتصحيح بالذكاء الاصطناعي على هذا الجهاز.</span></span></label>
+  <p class="small muted" id="aimarkst" style="margin:6px 0 0">${aiOk() ? '✓ AI marking is on for this device. · التصحيح بالذكاء الاصطناعي مفعّل على هذا الجهاز.' : 'AI marking is off for this device. · التصحيح بالذكاء الاصطناعي مغلق على هذا الجهاز.'}</p></div>` : ''}
 <div class="card" style="margin-top:12px"><h3>📣 Tell us</h3>
   <p style="margin:0">Tap <b>📣 Tell us</b> at the top of any page: 🚩 tell us about a mistake, ➕ ask for something to be added, ❤️ say what you think of the site, 📅 tell us how often you use it, or 🛠️ say what would make it better. It goes straight to the parent who made this site, with the page you were on. When they reply, the button blinks red and blue: open it to read the reply. Your messages stay there on this device. You can also tap 👍 or 👎 at the bottom of a page to say if it helped you.</p></div>
 ${fixesHTML()}
@@ -357,6 +432,7 @@ ${fixesHTML()}
      (one title or a list)]. STUDY CONTENT ONLY (user, 23 Oct 2026: "make what is new only for academic issues"): new questions,
      units and answers. Never list the site’s tools or features here (that makes the sites easy to copy), and never thank a student for flagging a mistake (user, 23 Oct 2026). */
   const NEWS = [
+    ['2026-10-26', '📝 What is on your test: everything up to Lesson 5. Europe, China, Polynesia, Vikings, the Renaissance, monarchs, explorers and inventions such as the compass and the astrolabe. The list is at the top of Home: tap a topic to revise it.', 'Year 8 History'],
     ['2026-10-26', '🎬 NEW: every lesson as a short story video (3 to 4 minutes): two voices, pictures from your slides, a timeline, a quick quiz and a recap. Everything in them comes from your lesson slides and class booklets. Open a lesson, then 📘 Read.', ['Year 8 History', 'Year 9 History']],
     ['2026-10-25', '🧱 NEW in ✍️ Practice questions: how to write the 6-mark and 8-mark answers, part by part. Sentence starters from your lessons, a model answer for each part, and 3 new questions from Lessons 2 and 5.', 'Year 8 History'],
     ['2026-10-24', '🔍 NEW: Zoom in: deep analysis. Learn how to zoom in on a word step by step (the zoom ladder), then practise on 76 zoom-in questions, including your teacher’s own, or choose your own word in any extract. Each answer gets a depth score and one thing to improve.', 'Year 9 English'],

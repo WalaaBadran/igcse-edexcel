@@ -21,8 +21,6 @@
     const a = e.target.closest && e.target.closest('a[href]'); if (!a) return;
     let u, g = null; try { u = new URL(a.href, location.href); g = sessionStorage.getItem('gtok'); } catch (er) { return; }
     if (u.host === location.host) { if (GA && !u.pathname.startsWith('/__g/')) a.href = GA[0].slice(0, -1) + u.pathname + u.search + u.hash; return; }   // stay on the guest address
-    if (!g || u.host === location.host || !/^year\d[\w-]*\.deirarevise\.workers\.dev$/.test(u.host)) return;
-    e.preventDefault(); location.href = 'https://' + u.host + '/__guest/' + g + '?to=' + encodeURIComponent(u.pathname + u.search + u.hash);
   }, true);
   // the part of the site on screen, e.g. "exam", "topic", "revise" ("home" for the Home page): used for the usage totals and 👍/👎
   const partNow = () => location.hash.replace(/^#\/?/, '').split(/[/?]/)[0].toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 27) || 'home';
@@ -933,7 +931,6 @@ ${fixesHTML()}
         + (GUEST ? '<p class="guestline small">👀 Guest view, shown to you only: please don’t share this site or its address. Nothing you do is saved on this device.</p>'
           : `<div class="ratebar small">${sget('rated:' + partNow()) ? 'Thank you for your answer!' : 'Was this page helpful? <button type="button" class="rateup" aria-label="Yes, it was helpful">👍</button><button type="button" class="ratedn" aria-label="No, it was not helpful">👎</button>'}</div>`)
         + `<div class="flagmsg small" role="status"></div>`
-        + (YR ? `<a class="yrlink small" href="https://year${YR}.deirarevise.workers.dev/">🏠 All Year ${YR} subjects</a>` : '')
         + (SHARE ? `<p class="copyline">© 2026. A free study site made voluntarily by a parent. Exam questions and mark schemes © Pearson Education Ltd, used for free, non-commercial practice; video links go to Corbettmaths. You are welcome to share this link.</p>`
           : `<p class="copyline">© 2026. Notes, quizzes and study plans made for these revision sites. Lesson slides belong to the school, and textbook and story extracts belong to their publishers and authors; they are used here only to help the class revise. Please don't copy or share these sites outside the class.</p>`)
         + `<p class="dedication" dir="rtl" lang="ar"><b>الحمد لله الذي بنعمته تتمّ الصالحات.<br>بفضل الله وتوفيقه تمّ هذا العمل، ليكون صدقةً جاريةً عنّي وعن والديّ الكريمين.<br>نسأل الله العليّ القدير أن يجعل فيه النفع والبركة لكلّ طالب علمٍ يمرّ من هنا، وأن يتقبّله منّا بقبولٍ حسن، ويجعله في ميزان حسناتنا جميعًا.<br>ولا تنسوني وأولادي من صالح دعائكم. 🤲</b></p>`

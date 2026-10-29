@@ -6,13 +6,10 @@
 (function () {
   const D = window.RVD; if (!D) return;
   const BASE = D.key.replace(/-rv$/, '');
-  const SITE = { 'eng9-af': 'eng9', 'eng8-ss': 'eng8', 'geo9-japan': 'geo9', 'geo8-dte': 'geo8', 'his8-aoe': 'his8', 'his9-ww1': 'his9', 'sci9-p1': 'sci9', 'sci8': 'sci8', 'y8m': 'mat8', 'y9m': 'mat9' }[BASE];
+  const SITE = { 'y8m': 'mat8', 'y9m': 'mat9' }[BASE];
   if (!SITE) return;
   const YEAR = (document.title.match(/Year (\d+)/) || [])[1] || '';
-  const LINKS = {
-    9: [['Year 9 English', 'https://year9-english.deirarevise.workers.dev'], ['Year 9 Geography', 'https://year9-geography.deirarevise.workers.dev'], ['Year 9 Science', 'https://year9-science.deirarevise.workers.dev']],
-    8: [['Year 8 English', 'https://year8-english.deirarevise.workers.dev'], ['Year 8 Geography', 'https://year8-geography.deirarevise.workers.dev'], ['Year 8 History', 'https://year8-history.deirarevise.workers.dev']]
-  };
+  const LINKS = {};
   const META = 'study-sync';
   const ls = {
     get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } },

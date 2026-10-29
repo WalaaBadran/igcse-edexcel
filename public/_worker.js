@@ -126,8 +126,7 @@ async function syncApi(request, env, url) {
 // i want it like chat to my private admin page"; "suggestions to improve and what they don't like about each site").
 // help.js sends 🚩 mistakes, 💡 ideas and 👎 dislikes here; they appear at once on the owner's private page (/__visits?k=…),
 // where the parent can reply. A reply shows only on the device that sent the message: that device keeps a random
-// conversation number in its own browser storage. No names, accounts, e-mails or phone numbers. (hub-work/chat_worker.js,
-// inserted by hub-work/add_chat.py; it replaced the older flags-only block and kept its key for audit-team/check_flags.py.)
+// conversation number in its own browser storage. No names, accounts, e-mails or phone numbers.
 const FLAG_KEY_HASH = 'a0eb9a84d213e5cf0ebe1aa4249164074d84be882ecc1c3e7d6a14737285bc85';
 const flagClean = (x, n) => String(x == null ? '' : x).replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, ' ').slice(0, n);
 // 💬 Your say (23 Oct 2026): mistake, add, opinion, often, improve; idea and dislike are kept for pages still cached on phones
@@ -191,7 +190,7 @@ async function flagApi(request, env, url) {   // the older 🚩 button (pages st
     const bad = await chatAdd(request, env, url, { ...body, kind: 'mistake' }, 'flag-' + crypto.randomUUID()); if (bad) return bad;
     return syncJson({ ok: true });
   }
-  if (op === 'list' || op === 'done') {   // audit-team/check_flags.py (key kept only on the parent's computer)
+  if (op === 'list' || op === 'done') {
     const ip = await syncHash('ip:' + (request.headers.get('cf-connecting-ip') || '') + ':' + new Date(now).toISOString().slice(0, 10));
     if (await syncCount(db, 'flagkey:' + ip, now, 5)) return syncJson({ error: 'Too many tries. Please wait 15 minutes.' }, 429);
     if (await syncHash('flags:' + String(body.key || '')) !== FLAG_KEY_HASH) { await syncBump(db, 'flagkey:' + ip, now); return syncJson({ error: 'Not allowed' }, 403); }
@@ -211,12 +210,8 @@ async function flagApi(request, env, url) {   // the older 🚩 button (pages st
 // No cookies, no IP addresses, nothing that identifies anyone. Owner page: /__visits?k=<private key> (key kept off GitHub;
 // only its hash is here). The owner's own devices are not counted ("don't count my visits"): the owner page sends the device
 // once through /__me on every site, which saves 'vown' in that site's browser storage, and help.js then sends no ping.
-// two owner keys open the private page (23 Oct 2026): the laptop's key (audit-team/owner-visits.key) and the newer key a
-// cloud session made for Year 8 English; both work on every site, so the device set-up (/__me) goes through all 11 sites
 const VISITS_HASHES = [];
-const VSITES = { 'year9-english': 'Y9 English', 'year8-english': 'Y8 English', 'year9-science': 'Y9 Science', 'year8-science': 'Y8 Science',
-  'year9-geography': 'Y9 Geography', 'year8-geography': 'Y8 Geography', 'year9-history': 'Y9 History', 'year8-history': 'Y8 History',
-  'year9-math': 'Y9 Maths', 'year8-math': 'Y8 Maths', 'year8-spanish': 'Y8 Spanish', 'year9-french': 'Y9 French', 'igcse-edexcel': 'IGCSE Maths (shared)' };
+const VSITES = { 'igcse-edexcel': 'IGCSE Maths' };
 let visitsReady = false;
 // ⚡ VSCHEMA: the tables below are made once; after that ONE quick check replaces ~16 table statements each time a server copy
 // starts (user 2026-10-21: show links were slow, about 10 s from the year page to a subject). Change it whenever a table changes.
@@ -265,7 +260,7 @@ const VHOST = { 'igcse-edexcel': 'igcse-edexcel.pages.dev' };
 // 👀 a show link can also be for a year group's hub page and all its subject sites
 const VHUBS = {};
 // the language sites are not on the year pages yet, so they get a show link of their own (user 2026-10-25: "send me here a show link for french to show to a friend")
-const VSOLO = ['year9-french', 'year8-spanish'];
+const VSOLO = [];
 const vPassName = s => (VHUBS[s] || [])[0] || (VSOLO.includes(s) ? VSITES[s] + ' (this site only)' : VSITES[s]) || s;
 const vPassHost = s => VHUBS[s] ? VHUBS[s][1] : vHost(s);
 async function vGuestNew(db, scope, pass) {   // a guest visit: valid about 6 hours on the hub and every subject site

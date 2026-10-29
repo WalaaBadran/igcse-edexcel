@@ -162,57 +162,7 @@
   const WHERE = { progress: '<a href="#/progress">📊 My progress</a>', home: 'the bottom of the <a href="#/">Home</a> page' };
   /* ✅ Corrections made: shown on each site's Help page (matched by the start of the page title). Newest first.
      Each entry: [date, what was wrong, what it says now]. Add a line whenever a reported mistake is fixed. */
-  const FIXES = {
-    'Year 8 Geography': [   // user 27 Oct: only lines that match the school files (slides, summary sheets, comics)
-      ['2026-10-27', 'Some water-shortage impacts were in the wrong group (short-term or long-term).', 'They now match your lesson\'s answer slide: short-term = water-borne disease (cholera) and wildfires; the others are long-term.'],
-      ['2026-10-27', 'About 528,527 people was given as the number from Egypt.', 'As on your recall slide, it is the number of people from the Philippines; Egypt is the top African country.'],
-      ['2026-10-27', 'Some notes added facts that are not in your school files (for example SDG 14, or "checked every day").', 'The notes now use only your lesson slides, summary sheets and comics.'],
-      ['2026-10-27', 'A recall picture showed the answers next to the questions.', 'The charts from the same slide now appear without the answers.'],
-      ['2026-10-27', 'Some recall questions written with AI help were not labelled.', 'They now say "written with AI help".'],
-      ['2026-10-11', '"11 billion people by 2100" had no date or source.', 'Labelled as the UN graph in your lesson (2017).'],
-      ['2026-10-11', 'Migration figures were given for Dubai.', 'As your recall slide says, they are figures for the whole UAE.'],
-      ['2026-10-11', 'Hard engineering was said to be always better or worse than soft engineering.', 'Your summary sheet says the choice depends on land value, population at risk and the local economy.'],
-      ['2026-10-11', 'Graph and map questions were shown without their graph or map.', 'The slide now appears with the question.']
-    ],
-    'Year 9 Geography': [   // user 27 Oct: only lines that match the school files (the 11 Oct lines that used outside facts are gone)
-      ['2026-10-27', 'Some answers and explanations added facts that are not in your school files (for example Tokyo\'s history, Hiroshima, anime, Apple and Google).', 'They now use only your lesson slides and summary sheets.'],
-      ['2026-10-27', 'Lava flows were said to move "a few metres per hour".', 'As on your slide: "a few metres to a few hundred metres per hour".'],
-      ['2026-10-27', 'Some of the answers written on your slides were reworded or missing.', 'They are now shown word for word.'],
-      ['2026-10-27', 'Six questions said "use the graph" but showed no graph.', 'The graph, map or pyramids now appear with the question.'],
-      ['2026-10-27', 'Skills-lab answers typed with a unit (for example 14 °C) were marked wrong.', 'They now count.'],
-      ['2026-10-27', 'The ⚡ Revise tab still had some old terms and meanings.', 'It now matches the notes.'],
-      ['2026-10-11', 'Some graph and pyramid questions had no figure, and mark schemes were not labelled.', 'The figures now appear with their questions, and mark schemes say "official" or "suggested".']
-    ],
-    'Year 9 History': [   // user 27 Oct: school files only
-      ['2026-10-27', 'Some notes and answers added facts that are not in your lesson slides or booklets (for example "six weeks" and "September 1914").', 'They now use only your lesson slides and booklets.'],
-      ['2026-10-27', 'The notes said nationalism encouraged militarism.', 'As on your plenary slide: "Increasing pride in military encouraged nationalism".'],
-      ['2026-10-27', '"Describe two features of life in the trenches" was marked out of 4.', 'It is 6 marks, with your slide\'s own mark scheme.'],
-      ['2026-10-27', 'Some cartoon answers did not match the pictures on your slides.', 'They now describe the cartoons you see.'],
-      ['2026-10-27', 'Some typed answers that matched your slide were marked wrong (for example the Black Hand and the naval race), and a few wrong answers were accepted.', 'Your slide\'s answers now get the mark, and those wrong answers do not.']
-    ],
-    'Year 9 English': [
-      ['2026-10-21', 'Timed full answer: a quotation with one word missing or changed was only called “not in the text”, so it looked like a mistake by the site.', 'The site now shows the real words and what is different (for example “Missing: being”), and a quotation with a small typing slip still counts, with a spelling note.'],
-      ['2026-10-12', '"Check my writing" only recognised a few set words, so correct answers in other words could get a ✗.', 'It now also accepts other ways of saying it (for example shows, portrays, makes us feel, on the other hand, as a result), and the quotation memory game accepts a one-letter spelling slip.'],
-      ['2026-10-11', 'The automatic key-word check did not work for most question types.', 'Fixed for every question; it now recognises more methods (tricolon, irony, sensory language, direct address) and \'single\' quotation marks.'],
-      ['2026-10-11', 'Writing times looked like official exam timings.', 'Labelled "suggested". Unseen passages are labelled "extra skills practice", not assessment texts.']
-    ],
-    'Year 8 English': [
-      ['2026-10-21', 'A quotation with one word missing or changed was only called “not in the text”.', 'The site now shows the real words and what is different, and a quotation with a small typing slip still counts, with a spelling note.'],
-      ['2026-10-12', '"Check my writing" only recognised a few set words, so correct answers in other words could get a ✗.', 'It now also accepts other ways of saying it (for example shows, portrays, makes us feel, on the other hand, as a result), and the quotation memory game accepts a one-letter spelling slip.'],
-      ['2026-10-11', 'The automatic key-word check did not work for most question types.', 'Fixed for every question; it now recognises more methods (tricolon, irony, sensory language, direct address) and \'single\' quotation marks.'],
-      ['2026-10-11', 'Writing times looked like official exam timings.', 'Labelled "suggested". Unseen passages are labelled "extra skills practice", not assessment texts.']
-    ],
-    'Year 9 Science': [
-      ['2026-10-12', 'The textbook password page refused every password (since 10 Oct).', 'Fixed: the correct class password opens the textbook chapters again.'],
-      ['2026-10-11', 'The stairs question did not say the people had the same mass.', 'It now says "of the same mass".'],
-      ['2026-10-11', 'Solar panels were said to produce nothing when it is cloudy.', 'They produce much less, but not usually zero.']
-    ],
-    'Year 8 History': [   // user 27 Oct: the notes follow the school files only (the 11 Oct lines used outside facts)
-      ['2026-10-27', 'Some notes added facts that are not in your lesson slides, or "corrected" the slides with outside facts.', 'The notes now follow your lesson slides and worksheet only.'],
-      ['2026-10-27', 'L\'Anse aux Meadows was said to be confirmed in "the 1960s", and Point Rosee was said to have "no Viking proof".', 'Both now follow your Lesson 3 slide: confirmed in 1960, and Sarah Parcak found a possible Viking site at Point Rosee.'],
-      ['2026-10-27', 'The caravel was called "light and fast", and the compass and astrolabe were called Renaissance inventions.', 'From your Lesson 1–2 slide: the caravel was "designed for long voyages" and "enhanced maneuverability" (it was easier to steer), and the compass and astrolabe were "advancements" in navigation during the Renaissance.']
-    ]
-  };
+  const FIXES = {};
   function fixesHTML() {
     const k = Object.keys(FIXES).find(t => document.title.startsWith(t)), list = k ? FIXES[k] : [];
     if (!list.length) return '';
@@ -482,28 +432,7 @@ ${fixesHTML()}
      fold under "More" so the box stays short on phones (2026-10-19). [date, text, only on sites whose title starts with this
      (one title or a list)]. STUDY CONTENT ONLY (user, 23 Oct 2026: "make what is new only for academic issues"): new questions,
      units and answers. Never list the site’s tools or features here (that makes the sites easy to copy), and never thank a student for flagging a mistake (user, 23 Oct 2026). */
-  const NEWS = [
-    ['2026-10-27', '🎯 NEW: My test topics. Your 6 Assessment 2 topics in one place: what you should be able to do, where to revise each one, and 4 quick questions. Tap 🎯 My test topics on Home.', 'Year 8 Science'],
-    ['2026-10-26', '📝 What is on your test: everything up to Lesson 5. Europe, China, Polynesia, Vikings, the Renaissance, monarchs, explorers and inventions such as the compass and the astrolabe. The list is at the top of Home: tap a topic to revise it.', 'Year 8 History'],
-    ['2026-10-26', '🎬 NEW: every lesson as a short story video (3 to 4 minutes): two voices, pictures from your slides, a timeline, a quick quiz and a recap. Everything in them comes from your lesson slides and class booklets. Open a lesson, then 📘 Read.', ['Year 8 History', 'Year 9 History']],
-    ['2026-10-25', '🧱 NEW in ✍️ Practice questions: how to write the 6-mark and 8-mark answers, part by part. Sentence starters from your lessons, a model answer for each part, and 3 new questions from Lessons 2 and 5.', 'Year 8 History'],
-    ['2026-10-24', '🔍 NEW: Zoom in: deep analysis. Learn how to zoom in on a word step by step (the zoom ladder), then practise on 76 zoom-in questions, including your teacher’s own, or choose your own word in any extract. Each answer gets a depth score and one thing to improve.', 'Year 9 English'],
-    ['2026-10-24', '📚 Revise only what you were taught: the notes, quiz, ⚡ Revise and test practice now come only from your lesson PowerPoints and class files. Things you did not learn in class have been taken out.', ['Year 8 History', 'Year 9 History', 'Year 8 Geography', 'Year 9 Geography']],
-    ['2026-10-24', '🗾 The notes, revision book and study guide were rewritten from your lesson slides and the Japan summary sheet. Past-paper questions from other exam boards were removed, so every question matches your lessons.', 'Year 9 Geography'],
-    ['2026-10-24', '🏙️ NEW: Lessons 5–7: cooler, cleaner cities (London) and the global energy mix. Notes, slides, quiz and test practice, plus your teacher’s revision comics for every lesson (📖 Revision comics on the home page) and the Independent Revision Questions.', 'Year 8 Geography'],
-    ['2026-10-24', '📝 NEW in Test practice: 6-mark source questions and 8-mark PEEL questions on food, water, ageing populations and the coast, using your lesson slides. Your test: six 1-mark questions, one 6-mark question and one 8-mark question (20 marks).', 'Year 8 Geography'],
-    ['2026-10-24', '✍️ NEW: Practice questions on Captain Cook and the Age of Exploration: how to answer each type of question, then try, mark yourself and see a model answer.', 'Year 8 History'],
-    ['2026-10-23', '🏮 NEW: Lesson 5, Chinese and European exploration: Zheng He, Spain and Portugal, and the Treaty of Tordesillas. Notes, slides, quiz and test practice, with source and PEEL questions.', 'Year 8 History'],
-    ['2026-10-23', '🎖️ NEW: Lesson 5, How were soldiers recruited to fight in WWI? Posters, conscription and Indian soldiers, plus both cover-work booklets. Notes, slides, quiz and test practice, with source and PEEL questions.', 'Year 9 History'],
-    ['2026-10-23', '📋 Your test: six 1-mark questions, one 6-mark question and one 8-mark question (20 marks). Test practice now has more questions like these.', ['Year 8 History', 'Year 9 History']],
-    ['2026-10-23', '🗝️ NEW in ⚡ Revise: Key terms. See a key term, type what it means, check it, then see the real meaning.', ['Year 9 Geography', 'Year 8 Geography', 'Year 9 History', 'Year 8 History', 'Year 9 Science', 'Year 8 Science', 'Year 9 English', 'Year 8 English']],
-    ['2026-10-23', '📝 NEW in Exam questions: Test practice. Your teacher’s own questions from the lesson PowerPoints, from 1-mark to 8-mark questions, with answers.', ['Year 8 Science', 'Year 9 Science', 'Year 8 Geography', 'Year 8 History', 'Year 9 History']],
-    ['2026-10-22', '📝 NEW in Exam questions: Test practice. Your teacher’s own questions from the lesson PowerPoints, from 1-mark to 8-mark questions, with answers.', 'Year 9 Geography'],
-    ['2026-10-20', '🌸 NEW: PETAL step by step. Practise each part of PETAL on its own, including 🔗 L+: linking to Orwell’s intentions and the context.', 'Year 9 English'],
-    ['2026-10-20', '✍️ 1-mark quiz questions are now written answers, like in your test, with marking.', ['Year 8 History', 'Year 9 History']],
-    ['2026-10-19', '📕 NEW: Textbook practice. The questions from your textbook, with the official answers.', ['Year 8 Science', 'Year 9 Science']],
-    ['2026-10-19', '🚀 NEW: Get ahead. The next units of the year, with questions, to start early.', ['Year 8 Science', 'Year 9 Science']],
-  ];
+  const NEWS = [];
   const forSite = (only, site) => !only || [].concat(only).some(o => site.startsWith(o));
   function newsHTML() {
     const site = document.title, now = Date.now();

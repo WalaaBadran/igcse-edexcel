@@ -1,0 +1,17 @@
+title = "Deira revise sites — gitleaks allowlist"
+
+# Scan everything with gitleaks' default rules, but skip these confirmed-safe strings.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Not secrets: Cloudflare Web Analytics beacon token + Cloudflare account/site identifiers (all public), and SHA-256 hashes of the owner keys and the school-time pass (one-way, cannot be reversed). Real credentials are stored only as GitHub Actions secrets, never in the code."
+regexes = [
+  '''121547fd04723ed31582fc3dc2b34ffc''',
+  '''88e2d1b5e3be41adbbef3c7b7eb60f25''',
+  '''9bf3199a31bf4e4c97912dbf5e126c19''',
+  '''a0eb9a84d213e5cf0ebe1aa4249164074d84be882ecc1c3e7d6a14737285bc85''',
+  '''a3c878a98dd187788a3e71c30df3c20b4bf227e80e6a39854b1aa84334970441''',
+  '''d687f8c5def9b7d2f44be88548615e2bfffabe8670f3cd8b517044a416d8cb0d''',
+  '''d80298765ede9f05e36f4b9416ecc97f3b20a7168fc3d010bf9510ecc696c836''',
+]

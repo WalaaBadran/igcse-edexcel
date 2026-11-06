@@ -257,7 +257,7 @@ canvas.pad { display: block; width: 100%; height: 300px; border: 1px solid var(-
 </head>
 <body>
 <header><div class="bar"><a class="logo" href="#/">🧮 IGCSE Edexcel Maths</a>
-  <nav aria-label="Pages"><a href="#/" data-p="home"><span class="ni">🏠</span>Home</a><a href="#/questions" data-p="questions"><span class="ni">📚</span>Learn</a><a href="#/worksheet" data-p="worksheet"><span class="ni">✏️</span>Test paper</a><a href="#/plan" data-p="plan"><span class="ni">📅</span>Plan</a><a href="#/help" data-p="help"><span class="ni">❓</span>Help</a></nav>
+  <nav aria-label="Pages"><a href="#/" data-p="home"><span class="ni">🏠</span>Home</a><a href="#/questions" data-p="questions"><span class="ni">📚</span>Learn</a><a href="#/worksheet" data-p="worksheet"><span class="ni">✏️</span>Test paper</a><a href="#/graph" data-p="graph"><span class="ni">📈</span>Graph</a><a href="#/plan" data-p="plan"><span class="ni">📅</span>Plan</a><a href="#/help" data-p="help"><span class="ni">❓</span>Help</a></nav>
 </div></header>
 <main id="app">
 
@@ -280,6 +280,12 @@ canvas.pad { display: block; width: 100%; height: 300px; border: 1px solid var(-
 
 <section data-page="plan"><div id="planview"></div></section>
 <section data-page="help"><div id="helpview"></div></section>
+
+<section data-page="graph">
+  <h1>📈 Straight-line graphs: y = mx + c</h1>
+  <p class="muted">Drag the sliders for the gradient <b>m</b> and the intercept <b>c</b>, and watch the line, the equation and the key points update live. A quick way to really see how m tilts the line and c slides it up and down.</p>
+  <div id="graphlab"></div>
+</section>
 
 <section data-page="questions">
   <h1>📚 Learn a topic</h1>
@@ -333,6 +339,8 @@ addEventListener('hashchange', showPage); showPage();
 <script data-share src="help.js?v=20261027f" data-plain></script>
 <script src="plan.js?v=20261023a" ></script>
 <script src="sync.js?v=20261019a"></script>
+<script src="widgets.js?v=1"></script>
+<script>(function(){var b=document.getElementById('graphlab');if(b&&window.Y9M_WIDGET){b.innerHTML=window.Y9M_WIDGET('3.3');if(window.Y9M_WIDGET_INIT)window.Y9M_WIDGET_INIT(b);}})();</script>
 <script src="site.js?v=6"></script>
 </body>
 </html>

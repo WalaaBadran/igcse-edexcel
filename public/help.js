@@ -632,22 +632,65 @@ ${fixesHTML()}
       prune(root);
       return root.kids.length >= 2 ? root : null;
     }
+    // 🧠 a creative branching mind map: a central icon hub, colour-coded branches on both sides, organic links, auto icons per node
     function mindmap() {
       const o = outline(); if (!o) return;
-      const cut = t => t.length > 140 ? t.slice(0, 140) + '…' : t;
-      const leaves = n => n.leaves.slice(0, 14).map(l => `<li><span class="leaf">${nesc(cut(l))}</span></li>`).join('') + (n.leaves.length > 14 ? `<li><span class="leaf">… ${n.leaves.length - 14} more on the page</span></li>` : '');
-      const branch = (n, lvl) => `<li><button type="button" class="node n${Math.min(lvl, 2)} ${lvl ? 'closed' : 'open'}" aria-expanded="${!lvl}">${nesc(n.t)}</button><ul ${lvl ? 'hidden' : ''}>${n.kids.map(k => branch(k, lvl + 1)).join('')}${leaves(n)}</ul></li>`;
+      const PAL = ['#2563EB', '#0E8F6E', '#D97706', '#DC2626', '#7C3AED', '#0891B2', '#DB2777', '#65A30D'];
+      const ICON = [['solid', '🧊'], ['liquid', '💧'], ['\\bgas', '💨'], ['energy', '⚡'], ['electron', '⚛️'], ['isotope', '⚖️'], ['atom', '⚛️'], ['element', '⚛️'], ['acid', '🧪'], ['alkali', '🧼'], ['neutral', '⚗️'], ['\\bsalt', '🧂'], ['\\bph\\b', '🧪'], ['cell', '🔬'], ['nucleus', '🧫'], ['chromosome', '🧬'], ['\\bgene', '🧬'], ['\\bdna', '🧬'], ['mitosis', '🧬'], ['bacteri', '🦠'], ['prokary', '🦠'], ['plant', '🌱'], ['leaf', '🍃'], ['light', '💡'], ['\\bsun', '☀️'], ['heat', '🔥'], ['temperature', '🌡️'], ['oxygen', '🫧'], ['respir', '🫁'], ['breath', '🫁'], ['lung', '🫁'], ['enzyme', '🧫'], ['diffus', '🌫️'], ['osmos', '💧'], ['mixture', '🥗'], ['compound', '⚗️'], ['period', '🗂️'], ['metal', '🔩'], ['force', '🧲'], ['speed', '🏃'], ['\\bwave', '〰️'], ['sound', '🔊'], ['magnet', '🧲'], ['digest', '🍽️'], ['blood', '🩸'], ['heart', '❤️'], ['water', '💧'], ['microscop', '🔬'], ['\\bwar', '⚔️'], ['\\bmap', '🗺️'], ['climate', '🌍'], ['river', '🏞️'], ['rock', '🪨'], ['quote', '💬'], ['character', '🎭'], ['theme', '🗝️']];
+      const ico = s => { s = ' ' + String(s).toLowerCase() + ' '; for (const a of ICON) { try { if (new RegExp(a[0]).test(s)) return a[1]; } catch (e) {} } return ''; };
+      const cut = (t, n) => { t = String(t); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
+      let idc = 0;
+      const mk = (label, leaf, depth, colour) => ({ id: ++idc, label, ic: ico(label), leaf, depth, colour, open: depth < 2, kids: [] });
+      function build(n, depth, colour) {
+        const node = mk(cut(n.t, depth ? 30 : 38), false, depth, colour);
+        (n.kids || []).forEach(k => node.kids.push(build(k, depth + 1, colour)));
+        (n.leaves || []).slice(0, 12).forEach(l => node.kids.push(mk(cut(l, 30), true, depth + 1, colour)));
+        if ((n.leaves || []).length > 12) node.kids.push(mk('… ' + (n.leaves.length - 12) + ' more on the page', true, depth + 1, colour));
+        return node;
+      }
+      const root = build(o, 0, '#334155'); root.open = true; root.ic = ico(root.label) || '🧠';
+      root.kids.forEach((k, i) => { const c = PAL[i % PAL.length]; (function p(n) { n.colour = c; n.kids.forEach(p); })(k); });
+      const RIGHT = [], LEFT = []; root.kids.forEach((k, i) => (i % 2 ? LEFT : RIGHT).push(k));
+      const GAPX = 22, ROWH = 34, TOP = 12, CW = 6.8, MAXW = 250, ICOW = 20;
+      const estW = n => Math.min(MAXW, Math.max(56, n.label.length * CW + 22 + (n.ic ? ICOW : 0)));
+      function side(nodes) {
+        let row = 0;
+        (function place(list, off) { list.forEach(n => { n.w = estW(n); n.off = off; const kids = n.open ? n.kids : []; if (!kids.length) { n.row = row; row++; } else { place(kids, off + n.w + GAPX); n.row = (kids[0].row + kids[kids.length - 1].row) / 2; } }); })(nodes, GAPX);
+        return row;
+      }
+      const HUBW = Math.min(240, Math.max(130, root.label.length * 7 + 54)), HUBH = 50, PAD = 18;
+      function render() {
+        const rRows = side(RIGHT), lRows = side(LEFT), rows = Math.max(rRows, lRows, 1);
+        let rMax = 0, lMax = 0;
+        (function s(list) { list.forEach(n => { rMax = Math.max(rMax, n.off + n.w); (n.open ? n.kids : []).forEach(x => s([x])); }); })(RIGHT);
+        (function s(list) { list.forEach(n => { lMax = Math.max(lMax, n.off + n.w); (n.open ? n.kids : []).forEach(x => s([x])); }); })(LEFT);
+        const hubCx = PAD + lMax + HUBW / 2, W = hubCx + HUBW / 2 + rMax + PAD, H = TOP * 2 + rows * ROWH, hubCy = TOP + rows * ROWH / 2;
+        const rOff = (rows - rRows) / 2, lOff = (rows - lRows) / 2;
+        (function abs(list, sign, ro) { list.forEach(n => { n.sign = sign; n.cy = TOP + (n.row + ro + 0.5) * ROWH; n.cx = sign > 0 ? hubCx + HUBW / 2 + n.off : hubCx - HUBW / 2 - n.off - n.w; abs(n.open ? n.kids : [], sign, ro); }); })(RIGHT, 1, rOff);
+        (function abs(list, sign, ro) { list.forEach(n => { n.sign = sign; n.cy = TOP + (n.row + ro + 0.5) * ROWH; n.cx = sign > 0 ? hubCx + HUBW / 2 + n.off : hubCx - HUBW / 2 - n.off - n.w; abs(n.open ? n.kids : [], sign, ro); }); })(LEFT, -1, lOff);
+        let paths = '', nodes = '';
+        const ribbon = (x1, y1, x2, y2, col, w1) => { const mx = (x1 + x2) / 2, a = w1 / 2, b = 1.5; paths += `<path d="M${x1} ${y1 - a} C${mx} ${y1 - a} ${mx} ${y2 - b} ${x2} ${y2 - b} L${x2} ${y2 + b} C${mx} ${y2 + b} ${mx} ${y1 + a} ${x1} ${y1 + a} Z" fill="${col}" opacity=".5"/>`; };
+        const node = n => { const h = 27, y = n.cy - h / 2, fill = n.leaf ? 'var(--card,#fff)' : n.colour, tc = n.leaf ? 'var(--ink,#1d2433)' : '#fff', hid = !n.leaf && n.kids.length && !n.open, px = n.cx + (n.sign > 0 ? n.w - 10 : 10); nodes += `<g class="mmn" data-id="${n.id}" style="cursor:${n.leaf ? 'default' : 'pointer'}"><rect x="${n.cx}" y="${y}" width="${n.w}" height="${h}" rx="13" fill="${fill}" stroke="${n.leaf ? n.colour : 'none'}" stroke-width="${n.leaf ? 1.5 : 0}"/><text x="${n.cx + 11}" y="${n.cy + 4.5}" font-size="13" font-weight="${n.leaf ? '500' : '700'}" fill="${tc}">${n.ic ? n.ic + ' ' : ''}${nesc(n.label)}</text>${hid ? `<circle cx="${px}" cy="${n.cy}" r="7.5" fill="#fff" stroke="${n.colour}" stroke-width="1.5"/><text x="${px}" y="${n.cy + 4}" font-size="12" text-anchor="middle" fill="${n.colour}" font-weight="800">+</text>` : ''}</g>`; };
+        (function draw(n) { const kids = n.open ? n.kids : []; kids.forEach(k => { const x1 = n === root ? hubCx + (k.sign > 0 ? HUBW / 2 : -HUBW / 2) : (n.sign > 0 ? n.cx + n.w : n.cx), y1 = n === root ? hubCy : n.cy, x2 = k.sign > 0 ? k.cx : k.cx + k.w; ribbon(x1, y1, x2, k.cy, k.colour, n === root ? 8 : 5); }); if (n !== root) node(n); kids.forEach(draw); })(root);
+        const hx = hubCx - HUBW / 2, hy = hubCy - HUBH / 2;
+        const burst = Array.from({ length: 20 }, (_, i) => { const an = i * Math.PI / 10, r = (i % 2 ? HUBW / 2 + 14 : HUBW / 2 + 2); return `${(hubCx + r * Math.cos(an)).toFixed(1)},${(hubCy + r * 0.6 * Math.sin(an)).toFixed(1)}`; }).join(' ');
+        const hub = `<polygon points="${burst}" fill="var(--brand,#4F46E5)" opacity=".16"/><rect x="${hx}" y="${hy}" width="${HUBW}" height="${HUBH}" rx="16" fill="var(--brand,#4F46E5)"/><text x="${hubCx}" y="${hubCy + 5}" text-anchor="middle" font-size="15" font-weight="800" fill="#fff">${root.ic} ${nesc(cut(root.label, 22))}</text>`;
+        return `<svg class="mmsvg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="system-ui,-apple-system,sans-serif">${paths}${hub}${nodes}</svg>`;
+      }
       const w = document.createElement('div'); w.className = 'mm-wrap'; w.setAttribute('role', 'dialog'); w.setAttribute('aria-label', 'Mind map');
+      const paint = () => { w.querySelector('.mmbox').innerHTML = render(); };
+      const setAll = op => { (function r(n) { if (!n.leaf && n.kids.length) n.open = op; n.kids.forEach(r); })(root); root.open = true; paint(); };
       w.innerHTML = `<div class="mm-top"><h2>🧠 Mind map</h2><button type="button" data-mm="all">Open all</button><button type="button" data-mm="none">Close all</button><button type="button" data-mm="x">✕ Close</button></div>
-        <p class="small muted" style="margin:0 0 10px">Made from this page. Tap a branch to open it.</p><div class="mm"><ul>${branch(o, 0)}</ul></div>`;
+        <p class="small muted" style="margin:0 0 10px">Made from this page. Tap a coloured branch to open or close it.</p><div class="mmbox" style="overflow:auto;-webkit-overflow-scrolling:touch"></div>`;
       const key = e => { if (e.key === 'Escape') { w.remove(); document.removeEventListener('keydown', key); } };
       w.addEventListener('click', e => {
-        const n = e.target.closest('.node'), b = e.target.closest('[data-mm]');
-        if (n) { const ul = n.nextElementSibling, open = ul.hidden; ul.hidden = !open; n.classList.toggle('open', open); n.classList.toggle('closed', !open); n.setAttribute('aria-expanded', open); }
+        const g = e.target.closest('.mmn'), b = e.target.closest('[data-mm]');
+        if (g) { const id = +g.dataset.id; (function f(n) { if (n.id === id) { if (!n.leaf && n.kids.length) { n.open = !n.open; paint(); } return true; } return n.kids.some(f); })(root); }
         if (b && b.dataset.mm === 'x') { w.remove(); document.removeEventListener('keydown', key); }
-        if (b && (b.dataset.mm === 'all' || b.dataset.mm === 'none')) w.querySelectorAll('.mm .node').forEach((x, i) => { if (!i) return; const op = b.dataset.mm === 'all'; x.nextElementSibling.hidden = !op; x.classList.toggle('open', op); x.classList.toggle('closed', !op); });
+        if (b && b.dataset.mm === 'all') setAll(true);
+        if (b && b.dataset.mm === 'none') setAll(false);
       });
-      document.addEventListener('keydown', key); document.body.appendChild(w);
+      document.addEventListener('keydown', key); document.body.appendChild(w); paint();
     }
     // 🎧 two voices read the page: A introduces each part, B reads its points
     let POD = null;

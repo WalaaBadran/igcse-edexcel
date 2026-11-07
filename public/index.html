@@ -253,6 +253,10 @@ canvas.pad { display: block; width: 100%; height: 300px; border: 1px solid var(-
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .work .btn[aria-pressed="true"] { color: #0F141C; } }
 .prow .lbar { margin: 0; } .prow a { text-decoration: none; }
 @media (max-width: 480px) { .prow { grid-template-columns: minmax(0, 1fr) 70px 44px; font-size: 14px; } }
+/* Tabs: no coloured 'selected' state (user 7 Nov 2026) — top menu + sub-tabs look unselected */
+.bar nav a.on { background: none; color: var(--muted); }
+.subbar a.on { background: var(--card); border-color: var(--line); color: var(--ink); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .subbar a.on { color: var(--ink); } }
 </style>
 </head>
 <body>

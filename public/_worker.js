@@ -874,7 +874,7 @@ ${hab.length ? `<div class="wrap"><table style="min-width:0"><tr><th>Site</th><t
 //      gives the pass with one tap.
 // Show-link visits (/__show/, /__guest/, /__g/) keep their own one-device rules. The IGCSE copy stays open to everyone.
 const CP_RING = ['year9', 'year8', 'year9-english', 'year9-science', 'year9-math', 'year9-geography', 'year9-history',
-  'year8-english', 'year8-science', 'year8-math', 'year8-computing', 'year8-geography', 'year8-history', 'year8-spanish', 'year9-french'].map(s => s + '.deirarevise.workers.dev');
+  'year8-english', 'year8-science', 'year8-math', 'year8-computing', 'year9-computing', 'year8-geography', 'year8-history', 'year8-spanish', 'year9-french'].map(s => s + '.deirarevise.workers.dev');
 const CP_HUBS = { 'year9.deirarevise.workers.dev': 'year9', 'year8.deirarevise.workers.dev': 'year8' };
 const CP_GRACE = 14 * 864e5;
 let cpReady = false, cpKey = null, cpLockAt = 0, cpLockRead = 0;

@@ -117,9 +117,9 @@ window.Y9M_FINECODES = [
   ['2.5A','Direct and inverse proportion; relate algebraic to graphical','H','Proportion, recipes and best buys'],
 
   ['2.6A','Exact solution of two simultaneous equations in two unknowns','B','Simultaneous equations'],
-  ['2.6B','Interpret equations as lines; common solution as intersection','H','Simultaneous equations'],
+  ['2.6B','Interpret equations as lines; common solution as intersection','B','Simultaneous equations'],
 
-  ['2.7A','Solve quadratic equations by factorisation (Foundation: x²+bx+c only; Higher includes leading coefficient ≠ 1)','B','Quadratic equations'],
+  ['2.7A','Solve quadratic equations by factorisation','B','Quadratic equations'],
   ['2.7B','Solve by the quadratic formula or completing the square','H','Quadratic equations'],
   ['2.7C','Form and solve quadratic equations from a context','H','Quadratic equations'],
   ['2.7D','Simultaneous equations: one linear, one quadratic','H','Simultaneous equations'],
@@ -161,7 +161,6 @@ window.Y9M_FINECODES = [
   ['3.3N','Intersections of two graphs (linear and non-linear)','H','Graphs of curves and transformations'],
   ['3.3O','Gradient from two points','H','Straight-line graphs'],
   ['3.3P','Equation of parallel/perpendicular line','H','Straight-line graphs'],
-  ['3.3Q','Recognise, plot and draw y = sin x, y = cos x, y = tan x (angles in degrees)','H','Graphs of curves and transformations'],
 
   ['3.4A','Variable rate of change','H',''],
   ['3.4B','Differentiate integer powers of x','H',''],
@@ -258,7 +257,7 @@ window.Y9M_FINECODES = [
   ['5.2I','Rotation, reflection, translation preserve length and angle','B',''],
   ['5.2J','Enlargement: centre and scale factor','B',''],
   ['5.2K','Enlargement preserves angles, not lengths','B',''],
-  ['5.2L','Enlarge a shape (positive scale factors incl. fractional; negative enlargement is enrichment, not specification)','B',''],
+  ['5.2L','Identify and give complete descriptions of transformations','B','Transformations'],
   ['5.2M','Identify and describe transformations','B',''],
 
   // 6. Statistics and Probability
@@ -266,17 +265,14 @@ window.Y9M_FINECODES = [
   ['6.1B','Tabulation methods for statistical diagrams','B','Averages and range'],
   ['6.1C','Interpret statistical diagrams','B','Averages and range'],
   ['6.1D','Histograms with unequal class widths','H','Histograms'],
-  ['6.1E','Construct cumulative-frequency diagrams from tables','H','Cumulative frequency and quartiles'],
-  ['6.1F','Use cumulative-frequency diagrams','H','Cumulative frequency and quartiles'],
 
   ['6.2A','Concept of average','B','Averages and range'],
   ['6.2B','Mean, median, mode, range (discrete)','B','Averages and range'],
   ['6.2C','Estimate mean for grouped data','B','Averages from grouped data'],
   ['6.2D','Modal class for grouped data','B','Averages from grouped data'],
-  ['6.2F','Estimate median from a cumulative-frequency diagram','H','Cumulative frequency and quartiles'],
+  ['6.2E','Construct cumulative frequency diagrams from tabulated data','H','Cumulative frequency and quartiles'],
+  ['6.2F','Use cumulative frequency diagrams to estimate the median and interquartile range','H','Cumulative frequency and quartiles'],
   ['6.2G','IQR for a discrete data set','H','Cumulative frequency and quartiles'],
-  ['6.2H','Estimate IQR from a cumulative-frequency diagram','H','Cumulative frequency and quartiles'],
-  ['6.2I','Concept of a measure of spread','H','Cumulative frequency and quartiles'],
 
   ['6.3A','Language of probability','B',''],
   ['6.3B','Probability scale 0 to 1','B',''],

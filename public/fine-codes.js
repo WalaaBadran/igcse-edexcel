@@ -273,7 +273,6 @@ window.Y9M_FINECODES = [
   ['6.2B','Mean, median, mode, range (discrete)','B','Averages and range'],
   ['6.2C','Estimate mean for grouped data','B','Averages from grouped data'],
   ['6.2D','Modal class for grouped data','B','Averages from grouped data'],
-  ['6.2E','Cumulative frequency diagrams','H','Cumulative frequency and quartiles'],
   ['6.2F','Estimate median from a cumulative-frequency diagram','H','Cumulative frequency and quartiles'],
   ['6.2G','IQR for a discrete data set','H','Cumulative frequency and quartiles'],
   ['6.2H','Estimate IQR from a cumulative-frequency diagram','H','Cumulative frequency and quartiles'],
